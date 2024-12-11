@@ -55,8 +55,13 @@ func createPrompt(promptText string) (*YandexARTRequest, error) {
 	// Логируем значение для проверки
 	log.Printf("Using folder ID: %s", folderID)
 
-	// Формируем полный текст промпта с дополнительными инструкциями
-	fullPrompt := fmt.Sprintf("%s, нарисуй в стиле смешного мема, яркие цвета, четкое изображение, высокое качество", promptText)
+	// Сначала генерируем промпт с помощью GPT
+	gptPrompt, err := GenerateImagePrompt(promptText)
+	if err != nil {
+		log.Printf("Failed to generate GPT prompt: %v, using original prompt", err)
+		// Если GPT не сработал, используем оригинальный промпт
+		gptPrompt = fmt.Sprintf("Нарисуй улыбающегося персонажа на тему: %s. Используй яркие цвета и весёлый стиль", promptText)
+	}
 
 	return &YandexARTRequest{
 		ModelUri: fmt.Sprintf("art://%s/yandex-art/latest", folderID),
@@ -70,7 +75,7 @@ func createPrompt(promptText string) (*YandexARTRequest, error) {
 		Messages: []Message{
 			{
 				Weight: "1",
-				Text:   fullPrompt,
+				Text:   gptPrompt,
 			},
 		},
 	}, nil
