@@ -1,12 +1,12 @@
 package internal
 
 import (
-	"fmt"
-	"net/http"
-	"os"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"log"
+	"net/http"
+	"os"
 	"strings"
 )
 
@@ -37,7 +37,7 @@ type GPTResponse struct {
 			Status string `json:"status"`
 		} `json:"alternatives"`
 		Usage struct {
-			InputTextTokens   string `json:"inputTextTokens"`
+			InputTextTokens  string `json:"inputTextTokens"`
 			CompletionTokens string `json:"completionTokens"`
 			TotalTokens      string `json:"totalTokens"`
 		} `json:"usage"`
@@ -73,7 +73,7 @@ func GenerateImagePrompt(userPrompt string) (string, error) {
 		ModelUri: fmt.Sprintf("gpt://%s/yandexgpt-lite", folderID),
 		CompletionOptions: CompletionOptions{
 			Stream:      false,
-			Temperature: 0.6, // Умеренная креативность
+			Temperature: 0.6,   // Умеренная креативность
 			MaxTokens:   "200", // Ограничиваем длину ответа
 		},
 		Messages: []GPTMessage{
@@ -83,7 +83,7 @@ func GenerateImagePrompt(userPrompt string) (string, error) {
 			},
 			{
 				Role: "user",
-				Text: fmt.Sprintf("Создай краткое описание весёлой картинки на тему: %s. Опиши основные элементы, цвета и настроение.", userPrompt),
+				Text: fmt.Sprintf("Создай краткое описание мема на тему: %s. Опиши основные элементы, цвета и настроение.", userPrompt),
 			},
 		},
 	}
