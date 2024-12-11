@@ -46,7 +46,7 @@ type YandexARTOperation struct {
 }
 
 // createPrompt создает запрос для генерации изображения с проверкой переменных окружения
-func createPrompt() (*YandexARTRequest, error) {
+func createPrompt(promptText string) (*YandexARTRequest, error) {
 	folderID := os.Getenv("YANDEX_ART_FOLDER_ID")
 	if folderID == "" {
 		return nil, fmt.Errorf("YANDEX_ART_FOLDER_ID environment variable not set")
@@ -54,6 +54,9 @@ func createPrompt() (*YandexARTRequest, error) {
 
 	// Логируем значение для проверки
 	log.Printf("Using folder ID: %s", folderID)
+
+	// Формируем полный текст промпта с дополнительными инструкциями
+	fullPrompt := fmt.Sprintf("%s, нарисуй в стиле смешного мема, яркие цвета, четкое изображение, высокое качество", promptText)
 
 	return &YandexARTRequest{
 		ModelUri: fmt.Sprintf("art://%s/yandex-art/latest", folderID),
@@ -67,7 +70,7 @@ func createPrompt() (*YandexARTRequest, error) {
 		Messages: []Message{
 			{
 				Weight: "1",
-				Text:   "нарисуй смешного кота в стиле мема, яркие цвета, четкое изображение, высокое качество",
+				Text:   fullPrompt,
 			},
 		},
 	}, nil
@@ -76,14 +79,14 @@ func createPrompt() (*YandexARTRequest, error) {
 const imageGenerationURL = "https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync"
 const operationURLBase = "https://llm.api.cloud.yandex.net:443/operations/"
 
-func GenerateImageFromYandexART() ([]byte, error) {
+func GenerateImageFromYandexART(promptText string) ([]byte, error) {
 	iamToken := os.Getenv("YANDEX_IAM_TOKEN")
 	if iamToken == "" {
 		return nil, fmt.Errorf("YANDEX_IAM_TOKEN environment variable not set")
 	}
 
 	// Создаем промпт с проверкой переменных окружения
-	prompt, err := createPrompt()
+	prompt, err := createPrompt(promptText)
 	if err != nil {
 		return nil, fmt.Errorf("creating prompt: %w", err)
 	}

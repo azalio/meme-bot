@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/azalio/meme-bot/internal"
@@ -91,6 +92,12 @@ func main() {
 func handleCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 	switch update.Message.Command() {
 	case "meme":
+		// Получаем текст после команды /meme
+		promptText := strings.TrimSpace(update.Message.CommandArguments())
+		if promptText == "" {
+			promptText = "нарисуй смешного кота в стиле мема" // Значение по умолчанию
+		}
+
 		msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Generating your meme, please wait...")
 		statusMsg, err := bot.Send(msg)
 		if err != nil {
@@ -98,7 +105,7 @@ func handleCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 			return
 		}
 
-		imageData, err := internal.GenerateImageFromYandexART()
+		imageData, err := internal.GenerateImageFromYandexART(promptText)
 		if err != nil {
 			editMsg := tgbotapi.NewEditMessageText(update.Message.Chat.ID, statusMsg.MessageID, 
 				"Sorry, failed to generate meme: "+err.Error())
@@ -125,10 +132,10 @@ func handleCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
 		bot.Send(deleteMsg)
 
 	case "help":
-		sendMessage(bot, update.Message.Chat.ID, "Available commands:\n/meme - Generates a meme\n/start - Starts the bot\n/help - Shows this help message")
+		sendMessage(bot, update.Message.Chat.ID, "Available commands:\n/meme [text] - Generates a meme with optional text description\n/start - Starts the bot\n/help - Shows this help message")
 
 	case "start":
-		sendMessage(bot, update.Message.Chat.ID, fmt.Sprintf("Hello, %s! I'm a meme bot. Use /meme to generate a meme.", update.Message.From.UserName))
+		sendMessage(bot, update.Message.Chat.ID, fmt.Sprintf("Hello, %s! I'm a meme bot. Use /meme [text] to generate a meme. For example: /meme красная шапочка", update.Message.From.UserName))
 
 	default: // This shouldn't be reached if the switch in main is correct.
 		sendMessage(bot, update.Message.Chat.ID, "Unknown command")
