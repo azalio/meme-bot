@@ -14,12 +14,17 @@ import (
 	"github.com/azalio/meme-bot/pkg/logger"
 )
 
-// YandexAuthServiceImpl реализует интерфейс YandexAuthService
+// YandexAuthServiceImpl реализует сервис аутентификации для Yandex Cloud API
+// Структура содержит:
+// - config: конфигурация с OAuth токеном
+// - logger: логгер для записи событий
+// - mu: RWMutex для потокобезопасного доступа к токену
+// - token: кэшированный IAM токен
 type YandexAuthServiceImpl struct {
 	config *config.Config
 	logger *logger.Logger
-	mu     sync.RWMutex
-	token  string
+	mu     sync.RWMutex // Защищает доступ к полю token
+	token  string       // Кэшированный IAM токен
 }
 
 type OAuth2Token struct {
@@ -33,12 +38,19 @@ type IAMTokenResponse struct {
 }
 
 // NewYandexAuthService создает новый экземпляр сервиса аутентификации
+// NewYandexAuthService создает новый экземпляр сервиса аутентификации
+// Параметры:
+// - cfg: конфигурация с OAuth токеном для Yandex Cloud
+// - log: логгер для записи событий
+// Возвращает настроенный сервис и запускает горутину для периодического обновления токена
 func NewYandexAuthService(cfg *config.Config, log *logger.Logger) *YandexAuthServiceImpl {
 	service := &YandexAuthServiceImpl{
 		config: cfg,
 		logger: log,
 	}
 
+	// Запускаем фоновое обновление токена каждые 50 минут
+	// IAM токены действительны в течение 12 часов, но мы обновляем чаще
 	go service.refreshTokenPeriodically()
 
 	return service
@@ -47,8 +59,17 @@ func NewYandexAuthService(cfg *config.Config, log *logger.Logger) *YandexAuthSer
 // GetIAMToken возвращает текущий IAM токен
 // Использует RLock для безопасного чтения токена
 // При отсутствии токена делегирует обновление методу refreshToken
+// GetIAMToken возвращает действующий IAM токен
+// Сначала проверяет кэшированный токен (используя RLock для эффективности)
+// Если токен отсутствует, запускает процесс обновления (с полной блокировкой)
+// Параметры:
+// - ctx: контекст для отмены операции
+// Возвращает:
+// - string: действующий IAM токен
+// - error: ошибку в случае проблем с получением токена
 func (s *YandexAuthServiceImpl) GetIAMToken(ctx context.Context) (string, error) {
 	s.logger.Debug("Trying to get IAM token")
+	// Используем RLock для чтения - позволяет параллельный доступ
 	s.mu.RLock()
 	token := s.token
 	s.mu.RUnlock()
@@ -117,10 +138,24 @@ func (s *YandexAuthServiceImpl) RefreshIAMToken(ctx context.Context, oauthToken 
 
 // refreshToken обновляет IAM токен
 // Использует полную блокировку для атомарного обновления токена
+// refreshToken обновляет IAM токен с полной блокировкой
+// Использует mutex для обеспечения атомарности операции обновления токена
+// Параметры:
+// - ctx: контекст для отмены операции
+// Возвращает:
+// - string: новый IAM токен
+// - error: ошибку в случае проблем с обновлением
 func (s *YandexAuthServiceImpl) refreshToken(ctx context.Context) (string, error) {
 	s.logger.Debug("Пробуем получить новый токен")
+	// Используем полную блокировку т.к. будем изменять token
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// Повторная проверка после получения блокировки
+	// Токен мог быть обновлен другой горутиной пока мы ждали Lock
+	if s.token != "" {
+		return s.token, nil
+	}
 
 	newToken, err := s.RefreshIAMToken(ctx, s.config.YandexOAuthToken)
 	if err != nil {
@@ -132,6 +167,10 @@ func (s *YandexAuthServiceImpl) refreshToken(ctx context.Context) (string, error
 }
 
 // refreshTokenPeriodically запускает периодическое обновление токена
+// refreshTokenPeriodically запускает периодическое обновление IAM токена
+// Выполняется в отдельной горутине каждые 50 минут
+// При ошибке обновления логирует её и продолжает попытки
+// Остановка сервиса должна производиться через закрытие контекста
 func (s *YandexAuthServiceImpl) refreshTokenPeriodically() {
 	ticker := time.NewTicker(50 * time.Minute)
 	defer ticker.Stop()
@@ -141,6 +180,10 @@ func (s *YandexAuthServiceImpl) refreshTokenPeriodically() {
 		_, err := s.refreshToken(ctx)
 		if err != nil {
 			s.logger.Error("Failed to refresh token: %v", err)
+			// При ошибке сбрасываем текущий токен
+			s.mu.Lock()
+			s.token = ""
+			s.mu.Unlock()
 		} else {
 			s.logger.Info("Successfully refreshed IAM token")
 		}

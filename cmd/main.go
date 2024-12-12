@@ -17,26 +17,34 @@ import (
 )
 
 func main() {
-	// Инициализируем контекст с возможностью отмены и таймаутом
+	// Создаем корневой контекст приложения с возможностью отмены
+	// Этот контекст будет использоваться для graceful shutdown и отмены всех операций
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	defer cancel() // Гарантируем отмену контекста при выходе из main
 
-	// Инициализируем логгер
+	// Инициализируем логгер для централизованного логирования
+	// Логгер поддерживает уровни INFO, ERROR и DEBUG (если включен)
 	log := logger.New()
 
-	// Загружаем конфигурацию
+	// Загружаем конфигурацию приложения из переменных окружения
+	// Конфигурация содержит токены, идентификаторы и другие настройки
 	cfg, err := config.New()
 	if err != nil {
 		log.Error("Failed to load config: %v", err)
 		os.Exit(1)
 	}
 
-	// Инициализируем сервисы
+	// Инициализируем сервисы в правильном порядке зависимостей:
+	// 1. AuthService - базовый сервис для аутентификации в Yandex Cloud
 	authService := service.NewYandexAuthService(cfg, log)
+
+	// 2. GPTService - сервис для работы с YandexGPT, зависит от AuthService
 	gptService := service.NewYandexGPTService(cfg, log, authService)
+
+	// 3. ArtService - сервис генерации изображений, зависит от AuthService и GPTService
 	artService := service.NewYandexArtService(cfg, log, authService, gptService)
 
-	// Инициализируем сервис бота
+	// 4. BotService - основной сервис Telegram бота, зависит от ArtService
 	var botService service.BotService
 	botService, err = service.NewBotService(cfg, log, artService)
 	if err != nil {
@@ -44,12 +52,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Создаём каналы для обработки сигналов и завершения
+	// Настраиваем механизм graceful shutdown:
+	// 1. sigChan - канал для получения сигналов операционной системы (Ctrl+C, kill)
 	sigChan := make(chan os.Signal, 1)
+	// 2. shutdownComplete - канал для синхронизации завершения работы
 	shutdownComplete := make(chan struct{})
+	// Подписываемся на сигналы SIGINT (Ctrl+C) и SIGTERM (kill)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// Создаём WaitGroup для ожидания завершения всех горутин
+	// WaitGroup для отслеживания активных горутин
+	// Позволяет дождаться завершения всех операций перед выключением
 	var wg sync.WaitGroup
 
 	// Запускаем цикл обработки сообщений в отдельной горутине
@@ -94,11 +106,19 @@ func main() {
 }
 
 // handleUpdates обрабатывает входящие сообщения от Telegram
+// handleUpdates обрабатывает входящие сообщения от Telegram
+// Параметры:
+// - ctx: контекст для отмены операций
+// - bot: сервис бота для взаимодействия с Telegram API
+// - log: логгер для записи событий и ошибок
 func handleUpdates(ctx context.Context, bot service.BotService, log *logger.Logger) {
-    updateConfig := tgbotapi.NewUpdate(0)
-    updateConfig.Timeout = 30
+    // Настраиваем параметры получения обновлений
+    updateConfig := tgbotapi.NewUpdate(0) // 0 означает получение всех новых сообщений
+    updateConfig.Timeout = 30 // таймаут long-polling в секундах
 
+    // Получаем канал обновлений от Telegram
     updates := bot.GetUpdatesChan(updateConfig)
+    // Канал для асинхронной обработки ошибок
     errorChan := make(chan error, 1)
 
     for {
@@ -145,9 +165,17 @@ func handleUpdates(ctx context.Context, bot service.BotService, log *logger.Logg
 }
 
 // handleCommand обрабатывает отдельные команды бота
+// handleCommand обрабатывает команды бота
+// Параметры:
+// - ctx: контекст с таймаутом для ограничения времени выполнения
+// - bot: сервис бота для отправки сообщений
+// - update: структура с информацией о сообщении
+// - command: название команды (meme, help, start)
+// - args: аргументы команды (текст после команды)
 func handleCommand(ctx context.Context, bot service.BotService, update tgbotapi.Update, command, args string) error {
 	switch command {
 	case "meme":
+		// Отправляем сообщение о начале генерации
 		if err := bot.SendMessage(ctx, update.Message.Chat.ID, "Генерирую мем, пожалуйста подождите..."); err != nil {
 			return fmt.Errorf("failed to send start message: %w", err)
 		}

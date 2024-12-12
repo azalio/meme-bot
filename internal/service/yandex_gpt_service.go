@@ -17,7 +17,12 @@ const (
     modelName        = "yandexgpt-lite"
 )
 
-// YandexGPTServiceImpl реализует интерфейс YandexGPTService
+// YandexGPTServiceImpl реализует сервис для работы с Yandex GPT API
+// Сервис используется для улучшения пользовательских промптов перед генерацией изображений
+// Структура содержит:
+// - config: конфигурация с токенами и настройками
+// - logger: компонент для логирования операций
+// - authService: сервис аутентификации для получения IAM токенов
 type YandexGPTServiceImpl struct {
     config     *config.Config
     logger     *logger.Logger
@@ -41,7 +46,15 @@ func (s *YandexGPTServiceImpl) GenerateImagePrompt(ctx context.Context, userProm
         return "", fmt.Errorf("getting IAM token: %w", err)
     }
 
-    // Создаем запрос к GPT
+    // Создаем запрос к Yandex GPT API
+    // ModelUri: указывает на конкретную версию модели в облаке
+    // CompletionOptions:
+    // - Stream: false - получаем ответ целиком, не потоком
+    // - Temperature: 0.6 - баланс между креативностью и предсказуемостью
+    // - MaxTokens: 200 - ограничиваем длину ответа для получения кратких описаний
+    // Messages:
+    // - System: задает общий контекст и стиль ответов
+    // - User: содержит конкретный запрос на основе пользовательского промпта
     request := GPTRequest{
         ModelUri: fmt.Sprintf("gpt://%s/%s", s.config.YandexArtFolderID, modelName),
         CompletionOptions: CompletionOptions{
@@ -81,7 +94,14 @@ func (s *YandexGPTServiceImpl) GenerateImagePrompt(ctx context.Context, userProm
     return prompt, nil
 }
 
-// sendGPTRequest отправляет запрос к GPT API
+// sendGPTRequest отправляет запрос к Yandex GPT API и обрабатывает ответ
+// Параметры:
+// - ctx: контекст для отмены операции
+// - iamToken: токен для аутентификации в API
+// - request: структура запроса с промптом и настройками
+// Возвращает:
+// - *GPTResponse: структуру с сгенерированным текстом
+// - error: ошибку в случае проблем с API или обработкой ответа
 func (s *YandexGPTServiceImpl) sendGPTRequest(ctx context.Context, iamToken string, request GPTRequest) (*GPTResponse, error) {
     requestBody, err := json.Marshal(request)
     if err != nil {
@@ -125,7 +145,12 @@ func (s *YandexGPTServiceImpl) sendGPTRequest(ctx context.Context, iamToken stri
     return &response, nil
 }
 
-// Вспомогательные методы и структуры данных
+// Структуры данных для работы с Yandex GPT API
+
+// GPTRequest описывает формат запроса к API
+// ModelUri: путь к модели в формате gpt://{folder_id}/{model_name}
+// CompletionOptions: настройки генерации текста
+// Messages: массив сообщений для контекста и запроса
 type GPTRequest struct {
     ModelUri          string            `json:"modelUri"`
     CompletionOptions CompletionOptions `json:"completionOptions"`
@@ -161,17 +186,33 @@ type GPTResponse struct {
     } `json:"result"`
 }
 
+// GPTErrorResponse описывает структуру ошибки от API
+// Содержит:
+// - GrpcCode: код ошибки gRPC
+// - HttpCode: HTTP код ответа
+// - Message: текстовое описание ошибки
+// - HttpStatus: статус HTTP ответа
+// - Details: дополнительная информация об ошибке
 type GPTErrorResponse struct {
     Error struct {
-        GrpcCode   int      `json:"grpcCode"`
-        HttpCode   int      `json:"httpCode"`
-        Message    string   `json:"message"`
-        HttpStatus string   `json:"httpStatus"`
-        Details    []string `json:"details"`
+        GrpcCode   int      `json:"grpcCode"`    // Код ошибки gRPC
+        HttpCode   int      `json:"httpCode"`    // HTTP статус
+        Message    string   `json:"message"`     // Описание ошибки
+        HttpStatus string   `json:"httpStatus"`  // Текстовый HTTP статус
+        Details    []string `json:"details"`     // Детали ошибки
     } `json:"error"`
 }
 
 // truncateText обрезает текст до указанной длины, сохраняя целые предложения
+// Алгоритм:
+// 1. Проверяет, не превышает ли текст максимальную длину
+// 2. Ищет последнюю точку перед максимальной длиной
+// 3. Обрезает текст по найденной точке или по максимальной длине
+// Параметры:
+// - text: исходный текст для обработки
+// - maxLength: максимально допустимая длина
+// Возвращает:
+// - обработанный текст, не превышающий maxLength и заканчивающийся полным предложением
 func truncateText(text string, maxLength int) string {
     if len(text) <= maxLength {
         return text

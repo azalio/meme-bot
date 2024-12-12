@@ -78,7 +78,14 @@ func (s *YandexArtServiceImpl) GenerateImage(ctx context.Context, promptText str
 	return imageData, nil
 }
 
-// startImageGeneration начинает процесс генерации изображения
+// startImageGeneration инициирует асинхронный процесс генерации изображения в Yandex Art API
+// Параметры:
+// - ctx: контекст для отмены операции
+// - prompt: текстовое описание желаемого изображения
+// - iamToken: токен для аутентификации в API
+// Возвращает:
+// - string: ID операции для отслеживания прогресса
+// - error: ошибку в случае проблем с запуском генерации
 func (s *YandexArtServiceImpl) startImageGeneration(ctx context.Context, prompt string, iamToken string) (string, error) {
 	s.logger.Info("Starting image generation")
 	s.logger.Debug("Using prompt: %s", prompt)
@@ -154,7 +161,16 @@ func (s *YandexArtServiceImpl) startImageGeneration(ctx context.Context, prompt 
 	return operation.ID, nil
 }
 
-// waitForImageAndGet ожидает завершения генерации и получает результат
+// waitForImageAndGet выполняет поллинг статуса операции генерации изображения
+// и возвращает результат после завершения
+// Параметры:
+// - ctx: контекст для отмены операции
+// - operationID: идентификатор операции генерации
+// - iamToken: токен для аутентификации в API
+// Возвращает:
+// - []byte: сгенерированное изображение в формате PNG
+// - error: ошибку в случае проблем с получением результата
+// Метод будет повторять запросы каждые 5 секунд в течение 5 минут
 func (s *YandexArtServiceImpl) waitForImageAndGet(ctx context.Context, operationID string, iamToken string) ([]byte, error) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	maxAttempts := 60 // 5 minutes with 5-second intervals
@@ -220,7 +236,8 @@ func (s *YandexArtServiceImpl) waitForImageAndGet(ctx context.Context, operation
 	return nil, fmt.Errorf("operation timed out after %d attempts", maxAttempts)
 }
 
-// Вспомогательные структуры
+// YandexARTRequest представляет структуру запроса к API генерации изображений
+// Документация: https://cloud.yandex.ru/docs/ai/vision/api-ref/
 type YandexARTRequest struct {
 	ModelUri          string            `json:"modelUri"`
 	GenerationOptions GenerationOptions `json:"generationOptions"`
