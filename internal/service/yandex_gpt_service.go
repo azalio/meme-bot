@@ -35,7 +35,7 @@ func NewYandexGPTService(cfg *config.Config, log *logger.Logger, auth YandexAuth
 
 // GenerateImagePrompt генерирует промпт для создания изображения
 func (s *YandexGPTServiceImpl) GenerateImagePrompt(ctx context.Context, userPrompt string) (string, error) {
-    s.logger.Info("Trying to get IAM token")
+    s.logger.Debug("Trying to get IAM token")
     iamToken, err := s.authService.GetIAMToken(ctx)
     if err != nil {
         return "", fmt.Errorf("getting IAM token: %w", err)
@@ -62,7 +62,7 @@ func (s *YandexGPTServiceImpl) GenerateImagePrompt(ctx context.Context, userProm
     }
 
     // Отправляем запрос
-    s.logger.Info("Creating HTTP request to GPT service")
+    s.logger.Debug("Creating HTTP request to GPT service")
     response, err := s.sendGPTRequest(ctx, iamToken, request)
     if err != nil {
         s.logger.Error("Failed to generate enhanced prompt: %v, using original prompt", err)
@@ -88,7 +88,7 @@ func (s *YandexGPTServiceImpl) sendGPTRequest(ctx context.Context, iamToken stri
         return nil, fmt.Errorf("marshalling request: %w", err)
     }
 
-    s.logger.Info("Sending request to GPT service")
+    s.logger.Debug("Sending request to GPT service")
     req, err := http.NewRequestWithContext(ctx, "POST", gptCompletionURL, bytes.NewBuffer(requestBody))
     if err != nil {
         return nil, fmt.Errorf("creating request: %w", err)
@@ -105,7 +105,7 @@ func (s *YandexGPTServiceImpl) sendGPTRequest(ctx context.Context, iamToken stri
     }
     defer resp.Body.Close()
 
-    s.logger.Info("Got response from GPT service, status: %d", resp.StatusCode)
+    s.logger.Debug("Got response from GPT service, status: %d", resp.StatusCode)
 
     if resp.StatusCode != http.StatusOK {
         // Пытаемся прочитать тело ошибки

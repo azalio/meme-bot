@@ -44,10 +44,11 @@ func NewYandexArtService(
 
 // GenerateImage генерирует изображение по промпту
 func (s *YandexArtServiceImpl) GenerateImage(ctx context.Context, promptText string) ([]byte, error) {
-	s.logger.Info("Starting image generation for prompt: %s", promptText)
+	s.logger.Info("Starting image generation")
+	s.logger.Debug("Prompt text: %s", promptText)
 
 	// Получаем IAM токен
-	s.logger.Info("Вход в метод GetIAMToken")
+	s.logger.Debug("Вход в метод GetIAMToken")
 	iamToken, err := s.authService.GetIAMToken(ctx)
 	if err != nil {
 		s.logger.Error("Error in GetIAMToken: %s", err)
@@ -55,7 +56,7 @@ func (s *YandexArtServiceImpl) GenerateImage(ctx context.Context, promptText str
 	}
 
 	// Генерируем улучшенный промпт через GPT
-	s.logger.Info("Enter to GenerateImagePrompt")
+	s.logger.Debug("Enter to GenerateImagePrompt")
 	enhancedPrompt, err := s.gptService.GenerateImagePrompt(ctx, promptText)
 	if err != nil {
 		s.logger.Error("Failed to generate enhanced prompt: %v, using original prompt", err)
@@ -79,7 +80,8 @@ func (s *YandexArtServiceImpl) GenerateImage(ctx context.Context, promptText str
 
 // startImageGeneration начинает процесс генерации изображения
 func (s *YandexArtServiceImpl) startImageGeneration(ctx context.Context, prompt string, iamToken string) (string, error) {
-	s.logger.Info("Starting image generation with prompt: %s", prompt)
+	s.logger.Info("Starting image generation")
+	s.logger.Debug("Using prompt: %s", prompt)
 	folderID := os.Getenv("YANDEX_ART_FOLDER_ID")
 	if folderID == "" {
 		s.logger.Error("YANDEX_ART_FOLDER_ID not set")
@@ -147,7 +149,8 @@ func (s *YandexArtServiceImpl) startImageGeneration(ctx context.Context, prompt 
 		return "", fmt.Errorf("no operation ID in response")
 	}
 
-	s.logger.Info("Image generation started, operation ID: %s", operation.ID)
+	s.logger.Info("Image generation started")
+	s.logger.Debug("Operation ID: %s", operation.ID)
 	return operation.ID, nil
 }
 
@@ -164,7 +167,7 @@ func (s *YandexArtServiceImpl) waitForImageAndGet(ctx context.Context, operation
 			s.logger.Error("Operation cancelled by context: %v", ctx.Err())
 			return nil, fmt.Errorf("operation cancelled: %w", ctx.Err())
 		case <-ticker.C:
-			s.logger.Info("Checking operation status, attempt %d/%d", attempt+1, maxAttempts)
+			s.logger.Debug("Checking operation status, attempt %d/%d", attempt+1, maxAttempts)
 
 			req, err := http.NewRequestWithContext(ctx, "GET", operationURLBase+operationID, nil)
 			if err != nil {
@@ -194,7 +197,7 @@ func (s *YandexArtServiceImpl) waitForImageAndGet(ctx context.Context, operation
 				continue
 			}
 
-			s.logger.Info("Operation status: done=%v", operation.Done)
+			s.logger.Debug("Operation status: done=%v", operation.Done)
 			if operation.Done {
 				if operation.Response.Image == "" {
 					s.logger.Error("Operation completed but no image data received")
