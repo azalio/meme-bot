@@ -1,152 +1,188 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"log"
 	"os"
+	"os/signal"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 
-	"github.com/azalio/meme-bot/internal"
+	"github.com/azalio/meme-bot/internal/config"
+	"github.com/azalio/meme-bot/pkg/logger"
+	"github.com/azalio/meme-bot/internal/service"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/joho/godotenv" // Add this for .env file support
 )
 
 func main() {
-	// 0. Load environment variables from .env file
-	err := godotenv.Load()
+	// Инициализируем контекст с возможностью отмены и таймаутом
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Инициализируем логгер
+	log := logger.New()
+
+	// Загружаем конфигурацию
+	cfg, err := config.New()
 	if err != nil {
-		log.Println("Error loading .env file (will try environment variables):", err)
+		log.Error("Failed to load config: %v", err)
+		os.Exit(1)
 	}
 
-	// 1. Initialize Telegram Bot (now checks .env and environment)
-	botToken := os.Getenv("TELEGRAM_BOT_TOKEN")
-	if botToken == "" {
-		log.Fatal("TELEGRAM_BOT_TOKEN not found in .env or environment variables.")
-	}
+	// Инициализируем сервисы
+	authService := service.NewYandexAuthService(cfg, log)
+	gptService := service.NewYandexGPTService(cfg, log, authService)
+	artService := service.NewYandexArtService(cfg, log, authService, gptService)
 
-	bot, err := tgbotapi.NewBotAPI(botToken)
+	// Инициализируем сервис бота
+	var botService service.BotService
+	botService, err = service.NewBotService(cfg, log, artService)
 	if err != nil {
-		log.Fatal("Error creating Telegram bot:", err)
+		log.Error("Failed to create bot service: %v", err)
+		os.Exit(1)
 	}
 
-	bot.Debug = true
+	// Создаём каналы для обработки сигналов и завершения
+	sigChan := make(chan os.Signal, 1)
+	shutdownComplete := make(chan struct{})
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	log.Printf("Authorized on account %s", bot.Self.UserName)
+	// Создаём WaitGroup для ожидания завершения всех горутин
+	var wg sync.WaitGroup
 
-	updateConfig := tgbotapi.NewUpdate(0)
-	updateConfig.Timeout = 60
-
-	updates := bot.GetUpdatesChan(updateConfig)
-
-	// Get initial IAM token
-	iamToken, err := internal.GetIAMToken()
-	if err != nil {
-		log.Fatal("Error getting initial IAM token:", err)
-	}
-	if err := os.Setenv("YANDEX_IAM_TOKEN", iamToken); err != nil {
-		log.Fatal("Error setting IAM token env variable:", err)
-	}
-
-	// Start goroutine to refresh IAM token every hour.
+	// Запускаем цикл обработки сообщений в отдельной горутине
+	wg.Add(1)
 	go func() {
-		for {
-			time.Sleep(time.Hour)
-			newIAMToken, err := internal.GetIAMToken()
-			if err != nil {
-				log.Printf("Error refreshing IAM token: %v. Using old token for now.", err)
-				continue // Keep using old token if there is an error.
-			}
-			iamToken = newIAMToken
-			if err := os.Setenv("YANDEX_IAM_TOKEN", newIAMToken); err != nil {
-				log.Printf("Error updating IAM token env variable: %v", err)
-				continue
-			}
-			log.Println("Successfully refreshed Yandex IAM token")
-		}
+		defer wg.Done()
+		handleUpdates(ctx, botService, log)
 	}()
 
-	for update := range updates {
-		if update.Message == nil {
-			continue
-		} else {
-			log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
+	// Ожидаем сигнал остановки
+	go func() {
+		<-sigChan
+		log.Info("Received shutdown signal, stopping gracefully...")
+		cancel()
 
-			if update.Message.IsCommand() {
-				switch update.Message.Command() {
-				case "meme":
-					handleCommand(bot, update)
-				case "help":
-					handleCommand(bot, update)
-				case "start":
-					handleCommand(bot, update)
-				default:
-					sendMessage(bot, update.Message.Chat.ID, "I don't know that command")
-				}
-			}
+		// Создаем таймаут для graceful shutdown
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer shutdownCancel()
+
+		// Останавливаем бот
+		botService.Stop()
+
+		// Ожидаем завершения всех горутин или таймаута
+		done := make(chan struct{})
+		go func() {
+			wg.Wait()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			log.Info("All goroutines completed successfully")
+		case <-shutdownCtx.Done():
+			log.Error("Shutdown timed out")
 		}
 
-	}
+		close(shutdownComplete)
+	}()
+
+	<-shutdownComplete
+	log.Info("Shutdown complete")
 }
 
-func handleCommand(bot *tgbotapi.BotAPI, update tgbotapi.Update) {
-	switch update.Message.Command() {
+// handleUpdates обрабатывает входящие сообщения от Telegram
+func handleUpdates(ctx context.Context, bot service.BotService, log *logger.Logger) {
+    updateConfig := tgbotapi.NewUpdate(0)
+    updateConfig.Timeout = 30
+
+    updates := bot.GetUpdatesChan(updateConfig)
+    errorChan := make(chan error, 1)
+
+    for {
+        select {
+        case <-ctx.Done():
+            log.Info("Stopping update handler")
+            return
+        case err := <-errorChan:
+            log.Error("Error handling command: %v", err)
+        case update, ok := <-updates:
+            if !ok {
+                log.Info("Update channel closed")
+                return
+            }
+
+            if update.Message == nil {
+                continue
+            }
+
+            log.Info("[%s] %s", update.Message.From.UserName, update.Message.Text)
+
+            if update.Message.IsCommand() {
+                command := update.Message.Command()
+                args := strings.TrimSpace(update.Message.CommandArguments())
+
+                go func() {
+                    cmdCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+                    defer cancel()
+
+                    switch command {
+                    case "meme", "help", "start":
+                        if err := handleCommand(cmdCtx, bot, update, command, args); err != nil {
+                            errorChan <- fmt.Errorf("command %s failed: %w", command, err)
+                        }
+                    default:
+                        if err := bot.SendMessage(cmdCtx, update.Message.Chat.ID, "Я не знаю такой команды"); err != nil {
+                            errorChan <- fmt.Errorf("failed to send unknown command message: %w", err)
+                        }
+                    }
+                }()
+            }
+        }
+    }
+}
+
+// handleCommand обрабатывает отдельные команды бота
+func handleCommand(ctx context.Context, bot service.BotService, update tgbotapi.Update, command, args string) error {
+	switch command {
 	case "meme":
-		// Получаем текст после команды /meme
-		promptText := strings.TrimSpace(update.Message.CommandArguments())
-		if promptText == "" {
-			promptText = "нарисуй смешного кота в стиле мема" // Значение по умолчанию
+		if err := bot.SendMessage(ctx, update.Message.Chat.ID, "Генерирую мем, пожалуйста подождите..."); err != nil {
+			return fmt.Errorf("failed to send start message: %w", err)
 		}
 
-		msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Generating your meme, please wait...")
-		statusMsg, err := bot.Send(msg)
+		imageData, err := bot.HandleCommand(ctx, command, args)
 		if err != nil {
-			log.Printf("Error sending status message: %v", err)
-			return
+			errMsg := fmt.Sprintf("Ошибка генерации мема: %v", err)
+			if sendErr := bot.SendMessage(ctx, update.Message.Chat.ID, errMsg); sendErr != nil {
+				return fmt.Errorf("failed to send error message: %w", sendErr)
+			}
+			return fmt.Errorf("failed to generate image: %w", err)
 		}
 
-		imageData, err := internal.GenerateImageFromYandexART(promptText)
-		if err != nil {
-			editMsg := tgbotapi.NewEditMessageText(update.Message.Chat.ID, statusMsg.MessageID, 
-				"Sorry, failed to generate meme: "+err.Error())
-			bot.Send(editMsg)
-			return
+		if err := bot.SendPhoto(ctx, update.Message.Chat.ID, imageData); err != nil {
+			errMsg := fmt.Sprintf("Ошибка отправки изображения: %v", err)
+			if sendErr := bot.SendMessage(ctx, update.Message.Chat.ID, errMsg); sendErr != nil {
+				return fmt.Errorf("failed to send error message: %w", sendErr)
+			}
+			return fmt.Errorf("failed to send photo: %w", err)
 		}
-
-		photo := tgbotapi.NewPhoto(update.Message.Chat.ID, tgbotapi.FileBytes{
-			Name:  "meme.png",
-			Bytes: imageData,
-		})
-		
-		_, err = bot.Send(photo)
-		if err != nil {
-			log.Printf("Error sending photo: %v", err)
-			editMsg := tgbotapi.NewEditMessageText(update.Message.Chat.ID, statusMsg.MessageID,
-				"Generated meme but failed to send it: "+err.Error())
-			bot.Send(editMsg)
-			return
-		}
-
-		// Delete the status message
-		deleteMsg := tgbotapi.NewDeleteMessage(update.Message.Chat.ID, statusMsg.MessageID)
-		bot.Send(deleteMsg)
 
 	case "help":
-		sendMessage(bot, update.Message.Chat.ID, "Available commands:\n/meme [text] - Generates a meme with optional text description\n/start - Starts the bot\n/help - Shows this help message")
+		if err := bot.SendMessage(ctx, update.Message.Chat.ID, `Доступные команды:
+/meme [текст] - Генерирует мем с опциональным описанием
+/start - Запускает бота
+/help - Показывает это сообщение`); err != nil {
+			return fmt.Errorf("failed to send help message: %w", err)
+		}
 
 	case "start":
-		sendMessage(bot, update.Message.Chat.ID, fmt.Sprintf("Hello, %s! I'm a meme bot. Use /meme [text] to generate a meme. For example: /meme красная шапочка", update.Message.From.UserName))
-
-	default: // This shouldn't be reached if the switch in main is correct.
-		sendMessage(bot, update.Message.Chat.ID, "Unknown command")
-
+		if err := bot.SendMessage(ctx, update.Message.Chat.ID, 
+			fmt.Sprintf("Привет, %s! Я бот для генерации мемов. Используй /meme [текст] для создания мема. Например: /meme красная шапочка", 
+			update.Message.From.UserName)); err != nil {
+			return fmt.Errorf("failed to send start message: %w", err)
+		}
 	}
-}
-
-func sendMessage(bot *tgbotapi.BotAPI, chatID int64, text string) {
-	msg := tgbotapi.NewMessage(chatID, text)
-	_, err := bot.Send(msg)
-	if err != nil {
-		log.Println("Error sending message:", err)
-	}
+	return nil
 }
