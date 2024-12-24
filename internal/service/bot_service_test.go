@@ -25,6 +25,25 @@ func (m *MockArtService) GenerateImage(ctx context.Context, promptText string) (
 	return args.Get(0).([]byte), args.Error(1)
 }
 
+// MockBotAPI имитирует Telegram Bot API для тестирования
+type MockBotAPI struct {
+	mock.Mock
+}
+
+func (m *MockBotAPI) Send(c tgbotapi.Chattable) (tgbotapi.Message, error) {
+	args := m.Called(c)
+	return args.Get(0).(tgbotapi.Message), args.Error(1)
+}
+
+func (m *MockBotAPI) StopReceivingUpdates() {
+	m.Called()
+}
+
+func (m *MockBotAPI) GetUpdatesChan(config tgbotapi.UpdateConfig) tgbotapi.UpdatesChannel {
+	args := m.Called(config)
+	return args.Get(0).(tgbotapi.UpdatesChannel)
+}
+
 func TestNewBotService(t *testing.T) {
 	// Arrange
 	cfg := &config.Config{
@@ -82,13 +101,19 @@ func TestHandleCommand(t *testing.T) {
 			cfg := &config.Config{TelegramToken: "test-token"}
 			log := logger.New()
 			artService := new(MockArtService)
+			mockBot := new(MockBotAPI)
 
 			if tt.command == "meme" {
 				artService.On("GenerateImage", mock.Anything, mock.Anything).Return(tt.imageData, nil)
 			}
 
-			svc, err := NewBotService(cfg, log, artService)
-			assert.NoError(t, err)
+			svc := &BotServiceImpl{
+				config:     cfg,
+				logger:     log,
+				Bot:        mockBot,
+				artService: artService,
+				stopChan:   make(chan struct{}),
+			}
 
 			// Act
 			result, err := svc.HandleCommand(context.Background(), tt.command, tt.args)
@@ -113,24 +138,28 @@ func TestSendMessage(t *testing.T) {
 		chatID        int64
 		message       string
 		expectedError bool
+		mockError     error
 	}{
 		{
 			name:          "successful message send",
 			chatID:        123,
 			message:       "test message",
 			expectedError: false,
+			mockError:     nil,
 		},
 		{
 			name:          "empty message",
 			chatID:        123,
 			message:       "",
 			expectedError: false,
+			mockError:     nil,
 		},
 		{
-			name:          "invalid chat id",
+			name:          "send error",
 			chatID:        -1,
 			message:       "test message",
 			expectedError: true,
+			mockError:     fmt.Errorf("send error"),
 		},
 	}
 
@@ -139,13 +168,21 @@ func TestSendMessage(t *testing.T) {
 			// Arrange
 			cfg := &config.Config{TelegramToken: "test-token"}
 			log := logger.New()
+			mockBot := new(MockBotAPI)
 			artService := new(MockArtService)
 
-			svc, err := NewBotService(cfg, log, artService)
-			assert.NoError(t, err)
+			mockBot.On("Send", mock.Anything).Return(tgbotapi.Message{}, tt.mockError)
+
+			svc := &BotServiceImpl{
+				config:     cfg,
+				logger:     log,
+				Bot:        mockBot,
+				artService: artService,
+				stopChan:   make(chan struct{}),
+			}
 
 			// Act
-			err = svc.SendMessage(context.Background(), tt.chatID, tt.message)
+			err := svc.SendMessage(context.Background(), tt.chatID, tt.message)
 
 			// Assert
 			if tt.expectedError {
@@ -153,6 +190,8 @@ func TestSendMessage(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
+
+			mockBot.AssertExpectations(t)
 		})
 	}
 }
@@ -161,32 +200,37 @@ func TestSendPhoto(t *testing.T) {
 	tests := []struct {
 		name          string
 		chatID        int64
-		photo        []byte
+		photo         []byte
 		expectedError bool
+		mockError     error
 	}{
 		{
 			name:          "successful photo send",
 			chatID:        123,
 			photo:         []byte("test image data"),
 			expectedError: false,
+			mockError:     nil,
 		},
 		{
 			name:          "empty photo data",
 			chatID:        123,
 			photo:         []byte{},
 			expectedError: true,
+			mockError:     fmt.Errorf("empty photo data"),
 		},
 		{
-			name:          "invalid chat id",
+			name:          "send error",
 			chatID:        -1,
 			photo:         []byte("test image data"),
 			expectedError: true,
+			mockError:     fmt.Errorf("send error"),
 		},
 		{
 			name:          "nil photo data",
 			chatID:        123,
 			photo:         nil,
 			expectedError: true,
+			mockError:     fmt.Errorf("nil photo data"),
 		},
 	}
 
@@ -195,13 +239,21 @@ func TestSendPhoto(t *testing.T) {
 			// Arrange
 			cfg := &config.Config{TelegramToken: "test-token"}
 			log := logger.New()
+			mockBot := new(MockBotAPI)
 			artService := new(MockArtService)
 
-			svc, err := NewBotService(cfg, log, artService)
-			assert.NoError(t, err)
+			mockBot.On("Send", mock.Anything).Return(tgbotapi.Message{}, tt.mockError)
+
+			svc := &BotServiceImpl{
+				config:     cfg,
+				logger:     log,
+				Bot:        mockBot,
+				artService: artService,
+				stopChan:   make(chan struct{}),
+			}
 
 			// Act
-			err = svc.SendPhoto(context.Background(), tt.chatID, tt.photo)
+			err := svc.SendPhoto(context.Background(), tt.chatID, tt.photo)
 
 			// Assert
 			if tt.expectedError {
@@ -209,6 +261,8 @@ func TestSendPhoto(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
+
+			mockBot.AssertExpectations(t)
 		})
 	}
 }
