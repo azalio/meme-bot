@@ -9,6 +9,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"os"
 	"time"
 
@@ -155,7 +156,7 @@ func (s *FusionBrainServiceImpl) GenerateImage(ctx context.Context, promptText s
 
 func (s *FusionBrainServiceImpl) checkAvailability(ctx context.Context) (bool, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET",
-		fusionBrainBaseURL+"/v1/text2image/availability", nil)
+		fmt.Sprintf(fusionBrainBaseURL+"key/api/v1/text2image/availability?model_id=%d", s.modelID), nil)
 	if err != nil {
 		s.logger.Error("checkAvailability in FusionBrainService failed, err is: %s", err)
 		return false, fmt.Errorf("creating request: %w", err)
@@ -213,7 +214,10 @@ func (s *FusionBrainServiceImpl) startImageGeneration(ctx context.Context, promp
 	}
 
 	// Add params field with JSON content type
-	part, err := writer.CreateFormField("params")
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Type", "application/json")
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"`, "params"))
+	part, err := writer.CreatePart(h)
 	if err != nil {
 		return "", fmt.Errorf("creating params field: %w", err)
 	}
@@ -224,7 +228,7 @@ func (s *FusionBrainServiceImpl) startImageGeneration(ctx context.Context, promp
 	writer.Close()
 
 	req, err := http.NewRequestWithContext(ctx, "POST",
-		fusionBrainBaseURL+"/v1/text2image/run", body)
+		fusionBrainBaseURL+"key/api/v1/text2image/run", body)
 	if err != nil {
 		return "", fmt.Errorf("creating request: %w", err)
 	}
@@ -239,7 +243,7 @@ func (s *FusionBrainServiceImpl) startImageGeneration(ctx context.Context, promp
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(body))
 	}
@@ -273,7 +277,7 @@ func (s *FusionBrainServiceImpl) waitForImageAndGet(ctx context.Context, uuid st
 			s.logger.Debug("Checking operation status, attempt %d/%d", attempt+1, maxAttempts)
 
 			req, err := http.NewRequestWithContext(ctx, "GET",
-				fusionBrainBaseURL+"/v1/text2image/status/"+uuid, nil)
+				fusionBrainBaseURL+"key/api/v1/text2image/status/"+uuid, nil)
 			if err != nil {
 				s.logger.Error("Failed to create request: %v", err)
 				return nil, fmt.Errorf("creating status request: %w", err)
@@ -303,8 +307,7 @@ func (s *FusionBrainServiceImpl) waitForImageAndGet(ctx context.Context, uuid st
 
 			s.logger.Debug("Operation status: %s", response.Status)
 
-			switch response.Status {
-			case "DONE":
+			if response.Status == "DONE" {
 				if len(response.Images) == 0 {
 					s.logger.Error("Operation completed but no images received")
 					return nil, fmt.Errorf("operation completed but no images received")
@@ -318,11 +321,13 @@ func (s *FusionBrainServiceImpl) waitForImageAndGet(ctx context.Context, uuid st
 
 				s.logger.Info("Image generation completed successfully")
 				return imageData, nil
-
-			case "FAIL":
+			} else if response.Status == "FAIL" {
 				s.logger.Error("Generation failed: %s", response.Error)
 				return nil, fmt.Errorf("generation failed: %s", response.Error)
 			}
+
+			// If status is not DONE or FAIL, continue waiting
+			s.logger.Debug("Generation in progress, status: %s", response.Status)
 		}
 	}
 
