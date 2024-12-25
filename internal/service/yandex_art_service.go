@@ -21,10 +21,10 @@ const (
 
 // YandexArtServiceImpl реализует интерфейс YandexArtService
 type YandexArtServiceImpl struct {
-	config      *config.Config
-	logger      *logger.Logger
-	authService YandexAuthService
-	gptService  YandexGPTService
+	config        *config.Config
+	logger        *logger.Logger
+	authService   YandexAuthService
+	promptEnhancer *PromptEnhancer
 }
 
 // NewYandexArtService создает новый экземпляр сервиса генерации изображений
@@ -34,11 +34,12 @@ func NewYandexArtService(
 	auth YandexAuthService,
 	gpt YandexGPTService,
 ) *YandexArtServiceImpl {
+	promptEnhancer := NewPromptEnhancer(log, gpt)
 	return &YandexArtServiceImpl{
-		config:      cfg,
-		logger:      log,
-		authService: auth,
-		gptService:  gpt,
+		config:        cfg,
+		logger:        log,
+		authService:   auth,
+		promptEnhancer: promptEnhancer,
 	}
 }
 
@@ -55,11 +56,11 @@ func (s *YandexArtServiceImpl) GenerateImage(ctx context.Context, promptText str
 		return nil, fmt.Errorf("getting IAM token: %w", err)
 	}
 
-	// Генерируем улучшенный промпт через GPT
-	s.logger.Debug("Enter to GenerateImagePrompt")
-	enhancedPrompt, err := s.gptService.GenerateImagePrompt(ctx, promptText)
+	// Генерируем улучшенный промпт
+	s.logger.Debug("Enhancing prompt")
+	enhancedPrompt, err := s.promptEnhancer.EnhancePrompt(ctx, promptText)
 	if err != nil {
-		s.logger.Error("Failed to generate enhanced prompt: %v, using original prompt", err)
+		s.logger.Error("Failed to enhance prompt: %v, using original prompt", err)
 		enhancedPrompt = promptText
 	}
 

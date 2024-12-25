@@ -18,16 +18,13 @@ import (
 
 func main() {
 	// Создаем корневой контекст приложения с возможностью отмены
-	// Этот контекст будет использоваться для graceful shutdown и отмены всех операций
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // Гарантируем отмену контекста при выходе из main
 
-	// Инициализируем логгер для централизованного логирования
-	// Логгер поддерживает уровни INFO, ERROR и DEBUG (если включен)
+	// Инициализируем логгер
 	log := logger.New()
 
-	// Загружаем конфигурацию приложения из переменных окружения
-	// Конфигурация содержит токены, идентификаторы и другие настройки
+	// Загружаем конфигурацию приложения
 	cfg, err := config.New()
 	if err != nil {
 		log.Error("Failed to load config: %v", err)
@@ -38,30 +35,23 @@ func main() {
 	// 1. AuthService - базовый сервис для аутентификации в Yandex Cloud
 	authService := service.NewYandexAuthService(cfg, log)
 
-	// 2. GPTService - сервис для работы с YandexGPT, зависит от AuthService
+	// 2. GPTService - сервис для работы с YandexGPT
 	gptService := service.NewYandexGPTService(cfg, log, authService)
 
-	// 3. ArtService - сервис генерации изображений, зависит от AuthService и GPTService
-	artService := service.NewYandexArtService(cfg, log, authService, gptService)
-
-	// 4. BotService - основной сервис Telegram бота, зависит от ArtService
+	// 3. BotService - основной сервис Telegram бота
 	var botService service.BotService
-	botService, err = service.NewBotService(cfg, log, artService)
+	botService, err = service.NewBotService(cfg, log, authService, gptService)
 	if err != nil {
 		log.Error("Failed to create bot service: %v", err)
 		os.Exit(1)
 	}
 
-	// Настраиваем механизм graceful shutdown:
-	// 1. sigChan - канал для получения сигналов операционной системы (Ctrl+C, kill)
+	// Настраиваем механизм graceful shutdown
 	sigChan := make(chan os.Signal, 1)
-	// 2. shutdownComplete - канал для синхронизации завершения работы
 	shutdownComplete := make(chan struct{})
-	// Подписываемся на сигналы SIGINT (Ctrl+C) и SIGTERM (kill)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	// WaitGroup для отслеживания активных горутин
-	// Позволяет дождаться завершения всех операций перед выключением
 	var wg sync.WaitGroup
 
 	// Запускаем цикл обработки сообщений в отдельной горутине
@@ -106,15 +96,10 @@ func main() {
 }
 
 // handleUpdates обрабатывает входящие сообщения от Telegram
-// handleUpdates обрабатывает входящие сообщения от Telegram
-// Параметры:
-// - ctx: контекст для отмены операций
-// - bot: сервис бота для взаимодействия с Telegram API
-// - log: логгер для записи событий и ошибок
 func handleUpdates(ctx context.Context, bot service.BotService, log *logger.Logger) {
     // Настраиваем параметры получения обновлений
-    updateConfig := tgbotapi.NewUpdate(0) // 0 означает получение всех новых сообщений
-    updateConfig.Timeout = 30 // таймаут long-polling в секундах
+    updateConfig := tgbotapi.NewUpdate(0)
+    updateConfig.Timeout = 30
 
     // Получаем канал обновлений от Telegram
     updates := bot.GetUpdatesChan(updateConfig)
@@ -164,14 +149,7 @@ func handleUpdates(ctx context.Context, bot service.BotService, log *logger.Logg
     }
 }
 
-// handleCommand обрабатывает отдельные команды бота
 // handleCommand обрабатывает команды бота
-// Параметры:
-// - ctx: контекст с таймаутом для ограничения времени выполнения
-// - bot: сервис бота для отправки сообщений
-// - update: структура с информацией о сообщении
-// - command: название команды (meme, help, start)
-// - args: аргументы команды (текст после команды)
 func handleCommand(ctx context.Context, bot service.BotService, update tgbotapi.Update, command, args string) error {
 	switch command {
 	case "meme":
