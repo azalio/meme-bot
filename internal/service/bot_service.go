@@ -12,6 +12,7 @@ import (
 // BotAPI interface defines the methods we need from telegram bot
 type BotAPI interface {
 	Send(c tgbotapi.Chattable) (tgbotapi.Message, error)
+	Request(c tgbotapi.Chattable) (*tgbotapi.APIResponse, error)
 	StopReceivingUpdates()
 	GetUpdatesChan(config tgbotapi.UpdateConfig) tgbotapi.UpdatesChannel
 }
@@ -94,14 +95,10 @@ func (s *BotServiceImpl) HandleCommand(ctx context.Context, command string, args
 	}
 }
 
-// SendMessage отправляет текстовое сообщение в указанный чат
-func (s *BotServiceImpl) SendMessage(ctx context.Context, chatID int64, message string) error {
+// SendMessage отправляет текстовое сообщение в указанный чат и возвращает отправленное сообщение
+func (s *BotServiceImpl) SendMessage(ctx context.Context, chatID int64, message string) (tgbotapi.Message, error) {
 	msg := tgbotapi.NewMessage(chatID, message)
-	_, err := s.Bot.Send(msg)
-	if err != nil {
-		return fmt.Errorf("failed to send message: %w", err)
-	}
-	return nil
+	return s.Bot.Send(msg)
 }
 
 // SendPhoto отправляет изображение в указанный чат
@@ -121,6 +118,16 @@ func (s *BotServiceImpl) SendPhoto(ctx context.Context, chatID int64, photo []by
 	_, err := s.Bot.Send(photoMsg)
 	if err != nil {
 		return fmt.Errorf("failed to send photo: %w", err)
+	}
+	return nil
+}
+
+// DeleteMessage удаляет сообщение по его ID
+func (s *BotServiceImpl) DeleteMessage(ctx context.Context, chatID int64, messageID int) error {
+	deleteMsg := tgbotapi.NewDeleteMessage(chatID, messageID)
+	_, err := s.Bot.Request(deleteMsg)
+	if err != nil {
+		return fmt.Errorf("failed to delete message: %w", err)
 	}
 	return nil
 }

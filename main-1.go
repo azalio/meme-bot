@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/azalio/meme-bot/internal/config"
-	"github.com/azalio/meme-bot/internal/service"
 	"github.com/azalio/meme-bot/pkg/logger"
+	"github.com/azalio/meme-bot/internal/service"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -39,7 +39,7 @@ func main() {
 	gptService := service.NewYandexGPTService(cfg, log, authService)
 
 	// 3. BotService - основной сервис Telegram бота
-	var botService *service.BotServiceImpl
+	var botService service.BotService
 	botService, err = service.NewBotService(cfg, log, authService, gptService)
 	if err != nil {
 		log.Error("Failed to create bot service: %v", err)
@@ -96,94 +96,95 @@ func main() {
 }
 
 // handleUpdates обрабатывает входящие сообщения от Telegram
-func handleUpdates(ctx context.Context, bot *service.BotServiceImpl, log *logger.Logger) {
-	// Настраиваем параметры получения обновлений
-	updateConfig := tgbotapi.NewUpdate(0)
-	updateConfig.Timeout = 30
+func handleUpdates(ctx context.Context, bot service.BotService, log *logger.Logger) {
+    // Настраиваем параметры получения обновлений
+    updateConfig := tgbotapi.NewUpdate(0)
+    updateConfig.Timeout = 30
 
-	// Получаем канал обновлений от Telegram
-	updates := bot.GetUpdatesChan(updateConfig)
-	// Канал для асинхронной обработки ошибок
-	errorChan := make(chan error, 1)
+    // Получаем канал обновлений от Telegram
+    updates := bot.GetUpdatesChan(updateConfig)
+    // Канал для асинхронной обработки ошибок
+    errorChan := make(chan error, 1)
 
-	for {
-		select {
-		case <-ctx.Done():
-			log.Info("Stopping update handler")
-			return
-		case err := <-errorChan:
-			log.Error("Error handling command: %v", err)
-		case update, ok := <-updates:
-			if !ok {
-				log.Info("Update channel closed")
-				return
-			}
+    for {
+        select {
+        case <-ctx.Done():
+            log.Info("Stopping update handler")
+            return
+        case err := <-errorChan:
+            log.Error("Error handling command: %v", err)
+        case update, ok := <-updates:
+            if !ok {
+                log.Info("Update channel closed")
+                return
+            }
 
-			if update.Message == nil {
-				continue
-			}
+            if update.Message == nil {
+                continue
+            }
 
-			log.Info("[%s] %s", update.Message.From.UserName, update.Message.Text)
+            log.Info("[%s] %s", update.Message.From.UserName, update.Message.Text)
 
-			if update.Message.IsCommand() {
-				command := update.Message.Command()
-				args := strings.TrimSpace(update.Message.CommandArguments())
+            if update.Message.IsCommand() {
+                command := update.Message.Command()
+                args := strings.TrimSpace(update.Message.CommandArguments())
 
-				go func() {
-					cmdCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-					defer cancel()
+                go func() {
+                    cmdCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+                    defer cancel()
 
-					switch command {
-					case "meme", "help", "start":
-						if err := handleCommand(cmdCtx, bot, update, command, args, log); err != nil {
-							errorChan <- fmt.Errorf("command %s failed: %w", command, err)
-						}
-					default:
-						if _, err := bot.SendMessage(cmdCtx, update.Message.Chat.ID, "Я не знаю такой команды"); err != nil {
-							errorChan <- fmt.Errorf("failed to send unknown command message: %w", err)
-						}
-					}
-				}()
-			}
-		}
-	}
+                    switch command {
+                    case "meme", "help", "start":
+                        if err := handleCommand(cmdCtx, bot, update, command, args); err != nil {
+                            errorChan <- fmt.Errorf("command %s failed: %w", command, err)
+                        }
+                    default:
+                        if err := bot.SendMessage(cmdCtx, update.Message.Chat.ID, "Я не знаю такой команды"); err != nil {
+                            errorChan <- fmt.Errorf("failed to send unknown command message: %w", err)
+                        }
+                    }
+                }()
+            }
+        }
+    }
 }
 
 // handleCommand обрабатывает команды бота
-func handleCommand(ctx context.Context, bot *service.BotServiceImpl, update tgbotapi.Update, command, args string, log *logger.Logger) error {
+func handleCommand(ctx context.Context, bot service.BotService, update tgbotapi.Update, command, args string) error {
 	switch command {
 	case "meme":
-		// Отправляем сообщение о начале генерации и сохраняем его ID
-		processingMsg, err := bot.SendMessage(ctx, update.Message.Chat.ID, "Генерирую мем, пожалуйста подождите...")
+		// Отправляем сообщение о начале генерации
+		waitMsg, err := bot.SendMessage(ctx, update.Message.Chat.ID, "Генерирую мем, пожалуйста подождите...")
 		if err != nil {
 			return fmt.Errorf("failed to send start message: %w", err)
 		}
 
 		imageData, err := bot.HandleCommand(ctx, command, args)
+		
+		// Удаляем сообщение о генерации
+		if waitMsg != nil {
+			if delErr := bot.DeleteMessage(ctx, update.Message.Chat.ID, waitMsg.MessageID); delErr != nil {
+				log.Printf("Failed to delete wait message: %v", delErr)
+			}
+		}
 		if err != nil {
 			errMsg := fmt.Sprintf("Ошибка генерации мема: %v", err)
-			if _, sendErr := bot.SendMessage(ctx, update.Message.Chat.ID, errMsg); sendErr != nil {
+			if sendErr := bot.SendMessage(ctx, update.Message.Chat.ID, errMsg); sendErr != nil {
 				return fmt.Errorf("failed to send error message: %w", sendErr)
 			}
 			return fmt.Errorf("failed to generate image: %w", err)
 		}
 
-		// Удаляем сообщение о генерации
-		if err := bot.DeleteMessage(ctx, update.Message.Chat.ID, processingMsg.MessageID); err != nil {
-			fmt.Printf("Failed to delete generation message: %v", err)
-			// Продолжаем выполнение даже при ошибке удаления
-		}
-
 		if err := bot.SendPhoto(ctx, update.Message.Chat.ID, imageData); err != nil {
 			errMsg := fmt.Sprintf("Ошибка отправки изображения: %v", err)
-			if _, sendErr := bot.SendMessage(ctx, update.Message.Chat.ID, errMsg); sendErr != nil {
+			if sendErr := bot.SendMessage(ctx, update.Message.Chat.ID, errMsg); sendErr != nil {
 				return fmt.Errorf("failed to send error message: %w", sendErr)
 			}
 			return fmt.Errorf("failed to send photo: %w", err)
 		}
 
 	case "help":
-		if _, err := bot.SendMessage(ctx, update.Message.Chat.ID, `Доступные команды:
+		if err := bot.SendMessage(ctx, update.Message.Chat.ID, `Доступные команды:
 /meme [текст] - Генерирует мем с опциональным описанием
 /start - Запускает бота
 /help - Показывает это сообщение`); err != nil {
@@ -191,9 +192,9 @@ func handleCommand(ctx context.Context, bot *service.BotServiceImpl, update tgbo
 		}
 
 	case "start":
-		if _, err := bot.SendMessage(ctx, update.Message.Chat.ID,
-			fmt.Sprintf("Привет, %s! Я бот для генерации мемов. Используй /meme [текст] для создания мема. Например: /meme красная шапочка",
-				update.Message.From.UserName)); err != nil {
+		if err := bot.SendMessage(ctx, update.Message.Chat.ID, 
+			fmt.Sprintf("Привет, %s! Я бот для генерации мемов. Используй /meme [текст] для создания мема. Например: /meme красная шапочка", 
+			update.Message.From.UserName)); err != nil {
 			return fmt.Errorf("failed to send start message: %w", err)
 		}
 	}
