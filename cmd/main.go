@@ -11,34 +11,48 @@ import (
 	"time"
 
 	"github.com/azalio/meme-bot/internal/config"
+	"github.com/azalio/meme-bot/internal/otel/metrics"
 	"github.com/azalio/meme-bot/internal/service"
 	"github.com/azalio/meme-bot/pkg/logger"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+// main - точка входа в программу.
 func main() {
-	// Создаем корневой контекст приложения с возможностью отмены
+	// Создаем контекст с возможностью отмены. Это позволяет управлять жизненным циклом горутин.
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel() // Гарантируем отмену контекста при выходе из main
+	defer cancel() // Гарантируем, что контекст будет отменен при завершении программы.
 
-	// Инициализируем логгер
+	// Инициализируем логгер для записи сообщений.
 	log := logger.New()
 
-	// Загружаем конфигурацию приложения
+	// Загружаем конфигурацию приложения. Конфигурация может содержать токены, настройки и т.д.
 	cfg, err := config.New()
 	if err != nil {
-		log.Error("Failed to load config: %v", err)
-		os.Exit(1)
+		log.Fatal("Failed to load config: %v", err)
 	}
 
-	// Инициализируем сервисы в правильном порядке зависимостей:
-	// 1. AuthService - базовый сервис для аутентификации в Yandex Cloud
+	// Инициализируем метрики и экспортер Prometheus.
+	mp, err := metrics.InitMetrics()
+	if err != nil {
+		log.Fatal("Failed to initialize metrics: %v", err)
+	}
+	defer func() {
+		if err := mp.Shutdown(context.Background()); err != nil {
+			log.Info("Error shutting down meter provider: %v", err)
+		}
+	}()
+
+	// Запускаем сервер метрик.
+	metrics.StartMetricsServer()
+
+	// Инициализируем сервис аутентификации для работы с Yandex Cloud.
 	authService := service.NewYandexAuthService(cfg, log)
 
-	// 2. GPTService - сервис для работы с YandexGPT
+	// Инициализируем сервис для работы с Yandex GPT.
 	gptService := service.NewYandexGPTService(cfg, log, authService)
 
-	// 3. BotService - основной сервис Telegram бота
+	// Инициализируем сервис Telegram бота.
 	var botService *service.BotServiceImpl
 	botService, err = service.NewBotService(cfg, log, authService, gptService)
 	if err != nil {
@@ -46,41 +60,42 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Настраиваем механизм graceful shutdown
+	// Настраиваем канал для обработки сигналов завершения программы (например, Ctrl+C).
 	sigChan := make(chan os.Signal, 1)
 	shutdownComplete := make(chan struct{})
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// WaitGroup для отслеживания активных горутин
+	// WaitGroup используется для ожидания завершения всех горутин перед завершением программы.
 	var wg sync.WaitGroup
 
-	// Запускаем цикл обработки сообщений в отдельной горутине
+	// Запускаем обработку обновлений от Telegram в отдельной горутине.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		handleUpdates(ctx, botService, log)
 	}()
 
-	// Ожидаем сигнал остановки
+	// Ожидаем сигнал завершения программы.
 	go func() {
 		<-sigChan
 		log.Info("Received shutdown signal, stopping gracefully...")
-		cancel()
+		cancel() // Отменяем контекст, чтобы остановить все горутины.
 
-		// Создаем таймаут для graceful shutdown
+		// Создаем контекст с таймаутом для graceful shutdown.
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer shutdownCancel()
 
-		// Останавливаем бот
+		// Останавливаем сервис бота.
 		botService.Stop()
 
-		// Ожидаем завершения всех горутин или таймаута
+		// Ожидаем завершения всех горутин.
 		done := make(chan struct{})
 		go func() {
 			wg.Wait()
 			close(done)
 		}()
 
+		// Ожидаем либо завершения всех горутин, либо истечения таймаута.
 		select {
 		case <-done:
 			log.Info("All goroutines completed successfully")
@@ -88,57 +103,82 @@ func main() {
 			log.Error("Shutdown timed out")
 		}
 
+		// Сигнализируем о завершении shutdown.
 		close(shutdownComplete)
 	}()
 
+	// Ожидаем завершения всех операций перед выходом из программы.
 	<-shutdownComplete
 	log.Info("Shutdown complete")
 }
 
-// handleUpdates обрабатывает входящие сообщения от Telegram
+// handleUpdates обрабатывает входящие обновления от Telegram.
 func handleUpdates(ctx context.Context, bot *service.BotServiceImpl, log *logger.Logger) {
-	// Настраиваем параметры получения обновлений
+	// Настраиваем параметры получения обновлений.
 	updateConfig := tgbotapi.NewUpdate(0)
 	updateConfig.Timeout = 30
 
-	// Получаем канал обновлений от Telegram
+	// Получаем канал обновлений от Telegram.
 	updates := bot.GetUpdatesChan(updateConfig)
-	// Канал для асинхронной обработки ошибок
+
+	// Канал для асинхронной обработки ошибок.
 	errorChan := make(chan error, 1)
 
+	// WaitGroup для отслеживания активных горутин.
+	var wg sync.WaitGroup
+
+	// Пул горутин: ограничиваем количество одновременно выполняемых горутин.
+	workerPool := make(chan struct{}, 10)
+
+	// Основной цикл обработки обновлений.
 	for {
 		select {
 		case <-ctx.Done():
+			// Если контекст отменен, завершаем обработку обновлений.
 			log.Info("Stopping update handler")
+			wg.Wait() // Ожидаем завершения всех горутин.
 			return
 		case err := <-errorChan:
+			// Логируем ошибки, возникшие при обработке команд.
 			log.Error("Error handling command: %v", err)
 		case update, ok := <-updates:
 			if !ok {
+				// Если канал обновлений закрыт, завершаем обработку.
 				log.Info("Update channel closed")
 				return
 			}
 
 			if update.Message == nil {
+				// Пропускаем обновления без сообщений.
 				continue
 			}
 
+			// Логируем полученное сообщение.
 			log.Info("[%s] %s", update.Message.From.UserName, update.Message.Text)
 
 			if update.Message.IsCommand() {
-				command := update.Message.Command()
-				args := strings.TrimSpace(update.Message.CommandArguments())
-
+				// Если сообщение является командой, запускаем обработку в отдельной горутине.
+				wg.Add(1)
 				go func() {
+					workerPool <- struct{}{}        // Занимаем слот в пуле горутин.
+					defer func() { <-workerPool }() // Освобождаем слот после завершения.
+					defer wg.Done()
+
+					command := update.Message.Command()
+					args := strings.TrimSpace(update.Message.CommandArguments())
+
+					// Создаем контекст с таймаутом для обработки команды.
 					cmdCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 					defer cancel()
 
+					// Обрабатываем команду.
 					switch command {
 					case "meme", "help", "start":
 						if err := handleCommand(cmdCtx, bot, update, command, args, log); err != nil {
 							errorChan <- fmt.Errorf("command %s failed: %w", command, err)
 						}
 					default:
+						// Если команда неизвестна, отправляем сообщение об ошибке.
 						if _, err := bot.SendMessage(cmdCtx, update.Message.Chat.ID, "Я не знаю такой команды"); err != nil {
 							errorChan <- fmt.Errorf("failed to send unknown command message: %w", err)
 						}
@@ -149,18 +189,20 @@ func handleUpdates(ctx context.Context, bot *service.BotServiceImpl, log *logger
 	}
 }
 
-// handleCommand обрабатывает команды бота
+// handleCommand обрабатывает конкретные команды бота.
 func handleCommand(ctx context.Context, bot *service.BotServiceImpl, update tgbotapi.Update, command, args string, log *logger.Logger) error {
 	switch command {
 	case "meme":
-		// Отправляем сообщение о начале генерации и сохраняем его ID
+		// Отправляем сообщение о начале генерации мема.
 		processingMsg, err := bot.SendMessage(ctx, update.Message.Chat.ID, "Генерирую мем, пожалуйста подождите...")
 		if err != nil {
 			return fmt.Errorf("failed to send start message: %w", err)
 		}
 
+		// Генерируем мем.
 		imageData, err := bot.HandleCommand(ctx, command, args)
 		if err != nil {
+			// В случае ошибки отправляем сообщение об ошибке.
 			errMsg := fmt.Sprintf("Ошибка генерации мема: %v", err)
 			if _, sendErr := bot.SendMessage(ctx, update.Message.Chat.ID, errMsg); sendErr != nil {
 				return fmt.Errorf("failed to send error message: %w", sendErr)
@@ -168,12 +210,12 @@ func handleCommand(ctx context.Context, bot *service.BotServiceImpl, update tgbo
 			return fmt.Errorf("failed to generate image: %w", err)
 		}
 
-		// Удаляем сообщение о генерации
+		// Удаляем сообщение о генерации.
 		if err := bot.DeleteMessage(ctx, update.Message.Chat.ID, processingMsg.MessageID); err != nil {
 			fmt.Printf("Failed to delete generation message: %v", err)
-			// Продолжаем выполнение даже при ошибке удаления
 		}
 
+		// Отправляем сгенерированный мем.
 		if err := bot.SendPhoto(ctx, update.Message.Chat.ID, imageData); err != nil {
 			errMsg := fmt.Sprintf("Ошибка отправки изображения: %v", err)
 			if _, sendErr := bot.SendMessage(ctx, update.Message.Chat.ID, errMsg); sendErr != nil {
@@ -183,6 +225,7 @@ func handleCommand(ctx context.Context, bot *service.BotServiceImpl, update tgbo
 		}
 
 	case "help":
+		// Отправляем сообщение с помощью по команде /help.
 		if _, err := bot.SendMessage(ctx, update.Message.Chat.ID, `Доступные команды:
 /meme [текст] - Генерирует мем с опциональным описанием
 /start - Запускает бота
@@ -191,6 +234,7 @@ func handleCommand(ctx context.Context, bot *service.BotServiceImpl, update tgbo
 		}
 
 	case "start":
+		// Отправляем приветственное сообщение по команде /start.
 		if _, err := bot.SendMessage(ctx, update.Message.Chat.ID,
 			fmt.Sprintf("Привет, %s! Я бот для генерации мемов. Используй /meme [текст] для создания мема. Например: /meme красная шапочка",
 				update.Message.From.UserName)); err != nil {
