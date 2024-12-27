@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/azalio/meme-bot/internal/config"
+	"github.com/azalio/meme-bot/internal/otel/metrics"
 	"github.com/azalio/meme-bot/pkg/logger"
 )
 
@@ -47,12 +48,14 @@ func (s *ImageGenerationService) GenerateImage(ctx context.Context, promptText s
 				s.logger.Info(ctx, "Successfully generated image with FusionBrain", map[string]interface{}{
 					"image_size": len(imageData),
 				})
+				metrics.FusionBrainSuccessCounter.Inc("success")
 				resultChan <- imageData
 				return
 			}
 			s.logger.Error(ctx, "FusionBrain generation failed", map[string]interface{}{
 				"error": err.Error(),
 			})
+			metrics.FusionBrainFailureCounter.Inc("failure")
 		}
 		errorChan <- fmt.Errorf("FusionBrain generation failed")
 	}()
@@ -66,12 +69,14 @@ func (s *ImageGenerationService) GenerateImage(ctx context.Context, promptText s
 			s.logger.Info(ctx, "Successfully generated image with YandexArt", map[string]interface{}{
 				"image_size": len(imageData),
 			})
+			metrics.YandexArtSuccessCounter.Inc("success")
 			resultChan <- imageData
 			return
 		}
 		s.logger.Error(ctx, "YandexArt generation failed", map[string]interface{}{
 			"error": err.Error(),
 		})
+		metrics.YandexArtFailureCounter.Inc("failure")
 		errorChan <- fmt.Errorf("YandexArt generation failed")
 	}()
 

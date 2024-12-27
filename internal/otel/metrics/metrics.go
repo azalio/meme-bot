@@ -39,6 +39,18 @@ var (
 	// Помогает отслеживать производительность генерации мемов и выявлять аномалии.
 	GenerationDuration *Histogram
 
+	// FusionBrainSuccessCounter подсчитывает количество успешных генераций через FusionBrain.
+	FusionBrainSuccessCounter *Counter
+
+	// FusionBrainFailureCounter подсчитывает количество неуспешных генераций через FusionBrain.
+	FusionBrainFailureCounter *Counter
+
+	// YandexArtSuccessCounter подсчитывает количество успешных генераций через YandexArt.
+	YandexArtSuccessCounter *Counter
+
+	// YandexArtFailureCounter подсчитывает количество неуспешных генераций через YandexArt.
+	YandexArtFailureCounter *Counter
+
 	// once гарантирует, что инициализация метрик произойдет только один раз
 	once sync.Once
 )
@@ -129,6 +141,40 @@ func InitMetrics() (*MetricProvider, error) {
 		)
 		if err != nil {
 			log.Printf("Failed to create generation duration histogram: %v", err)
+		}
+
+		// Инициализация счетчиков для FusionBrain
+		FusionBrainSuccessCounter, err = mp.NewCounter(
+			"meme_bot_fusionbrain_success_total",
+			"Total number of successful image generations via FusionBrain",
+		)
+		if err != nil {
+			log.Printf("Failed to create FusionBrain success counter: %v", err)
+		}
+
+		FusionBrainFailureCounter, err = mp.NewCounter(
+			"meme_bot_fusionbrain_failure_total",
+			"Total number of failed image generations via FusionBrain",
+		)
+		if err != nil {
+			log.Printf("Failed to create FusionBrain failure counter: %v", err)
+		}
+
+		// Инициализация счетчиков для YandexArt
+		YandexArtSuccessCounter, err = mp.NewCounter(
+			"meme_bot_yandexart_success_total",
+			"Total number of successful image generations via YandexArt",
+		)
+		if err != nil {
+			log.Printf("Failed to create YandexArt success counter: %v", err)
+		}
+
+		YandexArtFailureCounter, err = mp.NewCounter(
+			"meme_bot_yandexart_failure_total",
+			"Total number of failed image generations via YandexArt",
+		)
+		if err != nil {
+			log.Printf("Failed to create YandexArt failure counter: %v", err)
 		}
 	})
 
