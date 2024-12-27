@@ -83,7 +83,10 @@ func (s *BotServiceImpl) HandleCommand(ctx context.Context, command string, args
 		// Сначала улучшаем промпт через GPT
 		enhancedPrompt, err := s.promptEnhancer.EnhancePrompt(ctx, args)
 		if err != nil {
-			s.logger.Error("Failed to enhance prompt: %v", err)
+			s.logger.Error(ctx, "Failed to enhance prompt", map[string]interface{}{
+				"error": err.Error(),
+				"args":  args,
+			})
 			// В случае ошибки используем оригинальный промпт
 			enhancedPrompt = args
 		}

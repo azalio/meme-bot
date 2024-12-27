@@ -33,23 +33,36 @@ func NewImageGenerationService(
 func (s *ImageGenerationService) GenerateImage(ctx context.Context, promptText string) ([]byte, error) {
 	// First try FusionBrain
 	if s.fusionBrain != nil {
-		s.logger.Info("Attempting to generate image using FusionBrain")
+		s.logger.Info(ctx, "Attempting FusionBrain image generation", map[string]interface{}{
+			"prompt_length": len(promptText),
+		})
+
 		imageData, err := s.fusionBrain.GenerateImage(ctx, promptText)
 		if err == nil {
-			s.logger.Info("Successfully generated image using FusionBrain")
+			s.logger.Info(ctx, "Successfully generated image with FusionBrain", map[string]interface{}{
+				"image_size": len(imageData),
+			})
 			return imageData, nil
 		}
-		s.logger.Error("FusionBrain generation failed: %v, falling back to YandexArt", err)
+		s.logger.Error(ctx, "FusionBrain generation failed, falling back to YandexArt", map[string]interface{}{
+			"error": err.Error(),
+		})
 	}
 
 	// Fallback to YandexArt
-	s.logger.Info("Attempting to generate image using YandexArt")
+	s.logger.Info(ctx, "Attempting YandexArt image generation", map[string]interface{}{
+		"prompt_length": len(promptText),
+	})
 	imageData, err := s.yandexArt.GenerateImage(ctx, promptText)
 	if err != nil {
-		s.logger.Error("YandexArt generation failed: %v", err)
+		s.logger.Error(ctx, "YandexArt generation failed", map[string]interface{}{
+			"error": err.Error(),
+		})
 		return nil, fmt.Errorf("all image generation services failed: %w", err)
 	}
 
-	s.logger.Info("Successfully generated image using YandexArt")
+	s.logger.Info(ctx, "Successfully generated image with YandexArt", map[string]interface{}{
+		"image_size": len(imageData),
+	})
 	return imageData, nil
 }

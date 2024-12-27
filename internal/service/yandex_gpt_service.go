@@ -40,7 +40,7 @@ func NewYandexGPTService(cfg *config.Config, log *logger.Logger, auth YandexAuth
 
 // GenerateImagePrompt генерирует промпт для создания изображения
 func (s *YandexGPTServiceImpl) GenerateImagePrompt(ctx context.Context, userPrompt string) (string, error) {
-	s.logger.Debug("Trying to get IAM token")
+	s.logger.Debug(ctx, "Requesting IAM token from auth service", nil)
 	iamToken, err := s.authService.GetIAMToken(ctx)
 	if err != nil {
 		return "", fmt.Errorf("getting IAM token: %w", err)
@@ -85,16 +85,24 @@ func (s *YandexGPTServiceImpl) GenerateImagePrompt(ctx context.Context, userProm
 	}
 
 	// Отправляем запрос
-	s.logger.Debug("Creating HTTP request to GPT service")
+	s.logger.Debug(ctx, "Initiating GPT request", map[string]interface{}{
+		"prompt_length": len(userPrompt),
+	})
+
 	response, err := s.sendGPTRequest(ctx, iamToken, request)
 	if err != nil {
-		s.logger.Error("Failed to generate enhanced prompt: %v, using original prompt", err)
+		s.logger.Error(ctx, "Failed to generate enhanced prompt, falling back to original", map[string]interface{}{
+			"error":           err.Error(),
+			"original_prompt": userPrompt,
+		})
 		return userPrompt, nil
 	}
 
 	// Проверяем наличие ответа
 	if len(response.Result.Alternatives) == 0 {
-		s.logger.Error("No alternatives in response, using original prompt")
+		s.logger.Error(ctx, "Empty GPT response, falling back to original prompt", map[string]interface{}{
+			"original_prompt": userPrompt,
+		})
 		return userPrompt, nil
 	}
 
@@ -116,12 +124,22 @@ func (s *YandexGPTServiceImpl) GenerateImagePrompt(ctx context.Context, userProm
 func (s *YandexGPTServiceImpl) sendGPTRequest(ctx context.Context, iamToken string, request GPTRequest) (*GPTResponse, error) {
 	requestBody, err := json.Marshal(request)
 	if err != nil {
+		s.logger.Error(ctx, "Failed to marshal GPT request", map[string]interface{}{
+			"error": err.Error(),
+		})
 		return nil, fmt.Errorf("marshalling request: %w", err)
 	}
 
-	s.logger.Debug("Sending request to GPT service")
+	s.logger.Debug(ctx, "Preparing GPT service request", map[string]interface{}{
+		"url":    gptCompletionURL,
+		"method": "POST",
+	})
 	req, err := http.NewRequestWithContext(ctx, "POST", gptCompletionURL, bytes.NewBuffer(requestBody))
 	if err != nil {
+		s.logger.Error(ctx, "Failed to create GPT request", map[string]interface{}{
+			"error": err.Error(),
+			"url":   gptCompletionURL,
+		})
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
@@ -129,29 +147,51 @@ func (s *YandexGPTServiceImpl) sendGPTRequest(ctx context.Context, iamToken stri
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-folder-id", s.config.YandexArtFolderID)
 
+	s.logger.Debug(ctx, "Sending GPT request", map[string]interface{}{
+		"folder_id": s.config.YandexArtFolderID,
+		"headers":   req.Header,
+	})
+
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
+		s.logger.Error(ctx, "Failed to execute GPT request", map[string]interface{}{
+			"error": err.Error(),
+		})
 		return nil, fmt.Errorf("making request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	s.logger.Debug("Got response from GPT service, status: %d", resp.StatusCode)
-
+	s.logger.Debug(ctx, "Received GPT response", map[string]interface{}{
+		"status_code": resp.StatusCode,
+	})
 	if resp.StatusCode != http.StatusOK {
 		// Пытаемся прочитать тело ошибки
 		var errResponse GPTErrorResponse
 		if err := json.NewDecoder(resp.Body).Decode(&errResponse); err == nil {
-			s.logger.Error("GPT service returned non-200 status code: %d, body: %+v", resp.StatusCode, errResponse)
+			s.logger.Error(ctx, "GPT service returned error", map[string]interface{}{
+				"status_code": resp.StatusCode,
+				"error":       errResponse,
+			})
 			return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 		}
+		s.logger.Error(ctx, "GPT service returned error with undecodable body", map[string]interface{}{
+			"status_code": resp.StatusCode,
+		})
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
 	var response GPTResponse
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		s.logger.Error(ctx, "Failed to decode GPT response", map[string]interface{}{
+			"error": err.Error(),
+		})
 		return nil, fmt.Errorf("decoding response: %w", err)
 	}
+
+	s.logger.Debug(ctx, "Successfully processed GPT response", map[string]interface{}{
+		"alternatives_count": len(response.Result.Alternatives),
+	})
 
 	return &response, nil
 }

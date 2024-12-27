@@ -68,17 +68,21 @@ func NewYandexAuthService(cfg *config.Config, log *logger.Logger) *YandexAuthSer
 // - string: действующий IAM токен
 // - error: ошибку в случае проблем с получением токена
 func (s *YandexAuthServiceImpl) GetIAMToken(ctx context.Context) (string, error) {
-	s.logger.Debug("Trying to get IAM token")
+	s.logger.Debug(ctx, "Checking cached IAM token", nil)
+
 	// Используем RLock для чтения - позволяет параллельный доступ
 	s.mu.RLock()
 	token := s.token
 	s.mu.RUnlock()
-	
+
 	if token != "" {
+		s.logger.Debug(ctx, "Using cached IAM token", map[string]interface{}{
+			"token_length": len(token),
+		})
 		return token, nil
 	}
 
-	s.logger.Debug("No token found, refreshing")
+	s.logger.Debug(ctx, "No cached token found, initiating refresh", nil)
 	return s.refreshToken(ctx)
 }
 
@@ -89,50 +93,82 @@ func (s *YandexAuthServiceImpl) RefreshIAMToken(ctx context.Context, oauthToken 
 	// IAM token exchange endpoint
 	iamTokenURL := "https://iam.api.cloud.yandex.net/iam/v1/tokens"
 
+	s.logger.Debug(ctx, "Preparing IAM token refresh request", map[string]interface{}{
+		"url": iamTokenURL,
+	})
+
 	// Создаем тело запроса
 	requestBody := map[string]string{
 		"yandexPassportOauthToken": oauthToken,
 	}
 	requestBodyJSON, err := json.Marshal(requestBody)
 	if err != nil {
+		s.logger.Error(ctx, "Failed to marshal request body", map[string]interface{}{
+			"error": err.Error(),
+		})
 		return "", fmt.Errorf("marshalling request body: %w", err)
 	}
-	s.logger.Debug("Request body: %s", string(requestBodyJSON))
 
 	// Создаем HTTP запрос
 	req, err := http.NewRequestWithContext(ctx, "POST", iamTokenURL, bytes.NewBuffer(requestBodyJSON))
 	if err != nil {
+		s.logger.Error(ctx, "Failed to create HTTP request", map[string]interface{}{
+			"error": err.Error(),
+			"url":   iamTokenURL,
+		})
 		return "", fmt.Errorf("creating HTTP request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	s.logger.Debug("Request headers: %v", req.Header)
+
+	s.logger.Debug(ctx, "Sending IAM token request", map[string]interface{}{
+		"method":  "POST",
+		"headers": req.Header,
+	})
 
 	// Выполняем запрос
-	s.logger.Debug("Отправляем запрос на получение токена")
 	client := http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
+		s.logger.Error(ctx, "Failed to execute HTTP request", map[string]interface{}{
+			"error": err.Error(),
+			"url":   iamTokenURL,
+		})
 		return "", fmt.Errorf("making HTTP request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
+		s.logger.Error(ctx, "Failed to read response body", map[string]interface{}{
+			"error": err.Error(),
+		})
 		return "", fmt.Errorf("reading response body: %w", err)
 	}
-	s.logger.Debug("Response status: %d", resp.StatusCode)
-	s.logger.Debug("Response body: %s", string(bodyBytes))
+
+	s.logger.Debug(ctx, "Received IAM token response", map[string]interface{}{
+		"status_code": resp.StatusCode,
+		"body_size":   len(bodyBytes),
+	})
 
 	if resp.StatusCode != http.StatusOK {
+		s.logger.Error(ctx, "IAM token request failed", map[string]interface{}{
+			"status_code": resp.StatusCode,
+			"response":    string(bodyBytes),
+		})
 		return "", fmt.Errorf("HTTP request failed with status code: %d, body: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var iamTokenResponse IAMTokenResponse
 	if err := json.Unmarshal(bodyBytes, &iamTokenResponse); err != nil {
+		s.logger.Error(ctx, "Failed to decode IAM token response", map[string]interface{}{
+			"error": err.Error(),
+		})
 		return "", fmt.Errorf("decoding IAM token response: %w", err)
 	}
 
-	s.logger.Info("IAM token получен успешно")
+	s.logger.Info(ctx, "Successfully obtained IAM token", map[string]interface{}{
+		"token_length": len(iamTokenResponse.IAMToken),
+	})
 	return iamTokenResponse.IAMToken, nil
 }
 
@@ -146,7 +182,8 @@ func (s *YandexAuthServiceImpl) RefreshIAMToken(ctx context.Context, oauthToken 
 // - string: новый IAM токен
 // - error: ошибку в случае проблем с обновлением
 func (s *YandexAuthServiceImpl) refreshToken(ctx context.Context) (string, error) {
-	s.logger.Debug("Пробуем получить новый токен")
+	s.logger.Debug(ctx, "Starting token refresh process", nil)
+
 	// Используем полную блокировку т.к. будем изменять token
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -154,15 +191,26 @@ func (s *YandexAuthServiceImpl) refreshToken(ctx context.Context) (string, error
 	// Повторная проверка после получения блокировки
 	// Токен мог быть обновлен другой горутиной пока мы ждали Lock
 	if s.token != "" {
+		s.logger.Debug(ctx, "Token was updated by another routine", map[string]interface{}{
+			"token_length": len(s.token),
+		})
 		return s.token, nil
 	}
 
+	s.logger.Debug(ctx, "Requesting new IAM token", nil)
 	newToken, err := s.RefreshIAMToken(ctx, s.config.YandexOAuthToken)
 	if err != nil {
+		s.logger.Error(ctx, "Failed to refresh IAM token", map[string]interface{}{
+			"error": err.Error(),
+		})
 		return "", err
 	}
 
 	s.token = newToken
+	s.logger.Info(ctx, "Successfully refreshed and cached IAM token", map[string]interface{}{
+		"token_length": len(newToken),
+	})
+
 	return newToken, nil
 }
 
@@ -175,17 +223,27 @@ func (s *YandexAuthServiceImpl) refreshTokenPeriodically() {
 	ticker := time.NewTicker(50 * time.Minute)
 	defer ticker.Stop()
 
+	s.logger.Info(context.Background(), "Starting periodic token refresh", map[string]interface{}{
+		"interval": "50m",
+	})
+
 	for range ticker.C {
 		ctx := context.Background()
 		_, err := s.refreshToken(ctx)
 		if err != nil {
-			s.logger.Error("Failed to refresh token: %v", err)
+			s.logger.Error(ctx, "Periodic token refresh failed", map[string]interface{}{
+				"error": err.Error(),
+			})
 			// При ошибке сбрасываем текущий токен
 			s.mu.Lock()
 			s.token = ""
 			s.mu.Unlock()
+
+			s.logger.Debug(ctx, "Current token cleared due to refresh failure", nil)
 		} else {
-			s.logger.Info("Successfully refreshed IAM token")
+			s.logger.Info(ctx, "Periodic token refresh completed", map[string]interface{}{
+				"next_refresh": time.Now().Add(50 * time.Minute).Format(time.RFC3339),
+			})
 		}
 	}
 }
