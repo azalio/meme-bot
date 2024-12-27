@@ -62,7 +62,7 @@ func (s *YandexArtServiceImpl) GenerateImage(ctx context.Context, promptText str
 	s.logger.Debug(ctx, "Enhancing prompt", map[string]interface{}{
 		"original_prompt": promptText,
 	})
-	enhancedPrompt, err := s.promptEnhancer.EnhancePrompt(ctx, promptText)
+	enhancedPrompt, _, err := s.promptEnhancer.EnhancePrompt(ctx, promptText)
 	if err != nil {
 		s.logger.Error(ctx, "Prompt enhancement failed, using original", map[string]interface{}{
 			"error":           err.Error(),

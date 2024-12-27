@@ -41,23 +41,37 @@ type App struct {
 // Factory Pattern: Создание сложного объекта через фабричный метод
 func newApp() (*App, error) {
 	// Инициализируем логгер
-	log, err := logger.New(logger.Config{
-		Level:     logger.InfoLevel,
-		Service:   "meme-bot",
-		Env:       os.Getenv("ENVIRONMENT"),
-		GitCommit: os.Getenv("GIT_COMMIT"),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize logger: %w", err)
-	}
-	log.Debug(context.Background(), "Logger initialized successfully", nil)
+	logLevel := logger.InfoLevel
 
 	// Загружаем конфигурацию
 	cfg, err := config.New()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
+
+	if cfg.MemeDebug == "1" {
+		logLevel = logger.DebugLevel
+	}
+
+	log, err := logger.New(logger.Config{
+		Level:     logLevel,
+		Service:   "meme-bot",
+		Env:       os.Getenv("ENVIRONMENT"),
+		GitCommit: os.Getenv("GIT_COMMIT"),
+	})
+
 	log.Debug(context.Background(), "Configuration loaded successfully", nil)
+
+	log.Info(context.Background(), "Get logger level", map[string]interface{}{
+		"logger level": log.GetLevel().String(),
+	})
+
+	log.Info(context.Background(), log.GetLevel().String(), nil)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize logger: %w", err)
+	}
+	log.Debug(context.Background(), "Logger initialized successfully", nil)
 
 	// Инициализируем метрики
 	mp, err := metrics.InitMetrics()
@@ -300,7 +314,7 @@ func (a *App) handleMemeCommand(ctx context.Context, update tgbotapi.Update, arg
 	}()
 
 	// Step 3: Генерируем мем
-	imageData, err := a.bot.HandleCommand(ctx, "meme", args)
+	imageData, err, caption := a.bot.HandleCommand(ctx, "meme", args)
 	if err != nil {
 		// Metrics Pattern: Увеличиваем счетчик ошибок
 		metrics.ErrorCounter.Inc("meme_generation")
@@ -328,7 +342,7 @@ func (a *App) handleMemeCommand(ctx context.Context, update tgbotapi.Update, arg
 	}
 
 	// Step 5: Отправляем сгенерированный мем
-	if err := a.bot.SendPhoto(ctx, update.Message.Chat.ID, imageData); err != nil {
+	if err := a.bot.SendPhoto(ctx, update.Message.Chat.ID, imageData, caption); err != nil {
 		// Metrics Pattern: Увеличиваем счетчик ошибок отправки
 		metrics.ErrorCounter.Inc("meme_sending")
 

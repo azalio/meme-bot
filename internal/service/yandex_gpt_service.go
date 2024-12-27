@@ -18,11 +18,6 @@ const (
 )
 
 // YandexGPTServiceImpl реализует сервис для работы с Yandex GPT API
-// Сервис используется для улучшения пользовательских промптов перед генерацией изображений
-// Структура содержит:
-// - config: конфигурация с токенами и настройками
-// - logger: компонент для логирования операций
-// - authService: сервис аутентификации для получения IAM токенов
 type YandexGPTServiceImpl struct {
 	config      *config.Config
 	logger      *logger.Logger
@@ -38,45 +33,40 @@ func NewYandexGPTService(cfg *config.Config, log *logger.Logger, auth YandexAuth
 	}
 }
 
-// GenerateImagePrompt генерирует промпт для создания изображения
-func (s *YandexGPTServiceImpl) GenerateImagePrompt(ctx context.Context, userPrompt string) (string, error) {
+// GenerateImagePrompt генерирует промпт и подпись для создания изображения
+func (s *YandexGPTServiceImpl) GenerateImagePrompt(ctx context.Context, userPrompt string) (string, string, error) {
 	s.logger.Debug(ctx, "Requesting IAM token from auth service", nil)
 	iamToken, err := s.authService.GetIAMToken(ctx)
 	if err != nil {
-		return "", fmt.Errorf("getting IAM token: %w", err)
+		return "", "", fmt.Errorf("getting IAM token: %w", err)
 	}
 
 	// Создаем запрос к Yandex GPT API
-	// ModelUri: указывает на конкретную версию модели в облаке
-	// CompletionOptions:
-	// - Stream: false - получаем ответ целиком, не потоком
-	// - Temperature: 0.6 - баланс между креативностью и предсказуемостью
-	// - MaxTokens: 200 - ограничиваем длину ответа для получения кратких описаний
-	// Messages:
-	// - System: задает общий контекст и стиль ответов
-	// - User: содержит конкретный запрос на основе пользовательского промпта
 	request := GPTRequest{
 		ModelUri: fmt.Sprintf("gpt://%s/%s", s.config.YandexArtFolderID, modelName),
 		CompletionOptions: CompletionOptions{
 			Stream:      false,
-			Temperature: 0.6,   // Умеренная креативность
-			MaxTokens:   "200", // Ограничиваем длину ответа
+			Temperature: 0.6,
+			MaxTokens:   "200",
 		},
 		Messages: []GPTMessage{
-			{Role: "system", Text: `
-            Ты выступаешь в роли креативного мем-редактора и стендапера в одном лице. Твоя задача — преобразовать короткое описание мема так, чтобы получилась яркая, ироничная и запоминающаяся шутка, содержащая:
- 1. Небольшую завязку (контекст или ситуацию), которая намекает на современную поп-культуру, тренд или повседневную проблему.
- 2. Юмористический поворот с использованием абсурда, гиперболы или контраста.
- 3. Эмоциональные слова и лёгкий сленг, которые усилят комичность.
- 4. Отсылку к чему-то неожиданному (исторический факт, известная личность, бытовая мелочь), чтобы вызвать «эффект сюрприза».
- 5. Финальную формулировку для подписи на изображении (короткую, не более 1–2 строк).
+			{
+				Role: "system",
+				Text: `
+				Ты выступаешь в роли креативного мем-редактора и стендапера в одном лице. Твоя задача — преобразовать короткое описание мема так, чтобы получилась яркая, ироничная и запоминающаяся шутка, содержащая:
+				1. Небольшую завязку (контекст или ситуацию), которая намекает на современную поп-культуру, тренд или повседневную проблему.
+				2. Юмористический поворот с использованием абсурда, гиперболы или контраста.
+				3. Эмоциональные слова и лёгкий сленг, которые усилят комичность.
+				4. Отсылку к чему-то неожиданному (исторический факт, известная личность, бытовая мелочь), чтобы вызвать «эффект сюрприза».
+				5. Финальную формулировку для подписи на изображении (короткую, не более 1–2 строк).
 
-Пример структуры для итогового текста (твой результат должен содержать все пункты, но адаптироваться к исходному описанию):
- 1. Контекст/ситуация: Опиши, о чём мем (слегка преувеличивая или иронизируя).
- 2. Остроумная деталь: Добавь абсурд, необычные сравнения, упомяни какие-то спорные тренды.
- 3. Итоговая подпись для картинки: Сформулируй её так, чтобы была запоминающейся, по возможности короткой и задорной.
-
-Помни: сочетай иронию, стиль стендап-комика и короткий «укол» сленга. Избегай чрезмерных обобщений и делай акцент на конкретных деталях, чтобы шутка выглядела жизненной и цепляющей.`},
+				Ответ должен быть в формате JSON:
+				{
+					"context": "Контекст/ситуация",
+					"detail": "Остроумная деталь",
+					"caption": "Итоговая подпись для картинки"
+				}`,
+			},
 			{
 				Role: "user",
 				Text: fmt.Sprintf(`Создай краткое описание мема на тему: %s. Опиши основные элементы, цвета и настроение.`, userPrompt),
@@ -95,7 +85,7 @@ func (s *YandexGPTServiceImpl) GenerateImagePrompt(ctx context.Context, userProm
 			"error":           err.Error(),
 			"original_prompt": userPrompt,
 		})
-		return userPrompt, nil
+		return userPrompt, "", nil
 	}
 
 	// Проверяем наличие ответа
@@ -103,24 +93,35 @@ func (s *YandexGPTServiceImpl) GenerateImagePrompt(ctx context.Context, userProm
 		s.logger.Error(ctx, "Empty GPT response, falling back to original prompt", map[string]interface{}{
 			"original_prompt": userPrompt,
 		})
-		return userPrompt, nil
+		return userPrompt, "", nil
 	}
 
-	// Ограничиваем длину промпта
-	// prompt := truncateText(response.Result.Alternatives[0].Message.Text, 400)
-	prompt := response.Result.Alternatives[0].Message.Text
+	// Удаляем обратные кавычки из ответа
+	responseText := strings.Trim(response.Result.Alternatives[0].Message.Text, "`")
 
-	return prompt, nil
+	// Пытаемся распарсить JSON-ответ
+	var promptResponse GPTPromptResponse
+	if err := json.Unmarshal([]byte(responseText), &promptResponse); err != nil {
+		s.logger.Error(ctx, "Failed to parse GPT JSON response, using original text", map[string]interface{}{
+			"error": err.Error(),
+			"text":  responseText,
+		})
+		return userPrompt, "", nil
+	}
+
+	// Формируем итоговый промпт из context и detail
+	enhancedPrompt := promptResponse.Context + "\n\n" + promptResponse.Detail
+
+	s.logger.Debug(ctx, "Successfully parsed GPT response", map[string]interface{}{
+		"context": promptResponse.Context,
+		"detail":  promptResponse.Detail,
+		"caption": promptResponse.Caption,
+	})
+
+	return enhancedPrompt, promptResponse.Caption, nil
 }
 
 // sendGPTRequest отправляет запрос к Yandex GPT API и обрабатывает ответ
-// Параметры:
-// - ctx: контекст для отмены операции
-// - iamToken: токен для аутентификации в API
-// - request: структура запроса с промптом и настройками
-// Возвращает:
-// - *GPTResponse: структуру с сгенерированным текстом
-// - error: ошибку в случае проблем с API или обработкой ответа
 func (s *YandexGPTServiceImpl) sendGPTRequest(ctx context.Context, iamToken string, request GPTRequest) (*GPTResponse, error) {
 	requestBody, err := json.Marshal(request)
 	if err != nil {
@@ -199,9 +200,6 @@ func (s *YandexGPTServiceImpl) sendGPTRequest(ctx context.Context, iamToken stri
 // Структуры данных для работы с Yandex GPT API
 
 // GPTRequest описывает формат запроса к API
-// ModelUri: путь к модели в формате gpt://{folder_id}/{model_name}
-// CompletionOptions: настройки генерации текста
-// Messages: массив сообщений для контекста и запроса
 type GPTRequest struct {
 	ModelUri          string            `json:"modelUri"`
 	CompletionOptions CompletionOptions `json:"completionOptions"`
@@ -237,33 +235,25 @@ type GPTResponse struct {
 	} `json:"result"`
 }
 
+// GPTPromptResponse представляет структурированный ответ от GPT
+type GPTPromptResponse struct {
+	Context string `json:"context"`
+	Detail  string `json:"detail"`
+	Caption string `json:"caption"`
+}
+
 // GPTErrorResponse описывает структуру ошибки от API
-// Содержит:
-// - GrpcCode: код ошибки gRPC
-// - HttpCode: HTTP код ответа
-// - Message: текстовое описание ошибки
-// - HttpStatus: статус HTTP ответа
-// - Details: дополнительная информация об ошибке
 type GPTErrorResponse struct {
 	Error struct {
-		GrpcCode   int      `json:"grpcCode"`   // Код ошибки gRPC
-		HttpCode   int      `json:"httpCode"`   // HTTP статус
-		Message    string   `json:"message"`    // Описание ошибки
-		HttpStatus string   `json:"httpStatus"` // Текстовый HTTP статус
-		Details    []string `json:"details"`    // Детали ошибки
+		GrpcCode   int      `json:"grpcCode"`
+		HttpCode   int      `json:"httpCode"`
+		Message    string   `json:"message"`
+		HttpStatus string   `json:"httpStatus"`
+		Details    []string `json:"details"`
 	} `json:"error"`
 }
 
 // truncateText обрезает текст до указанной длины, сохраняя целые предложения
-// Алгоритм:
-// 1. Проверяет, не превышает ли текст максимальную длину
-// 2. Ищет последнюю точку перед максимальной длиной
-// 3. Обрезает текст по найденной точке или по максимальной длине
-// Параметры:
-// - text: исходный текст для обработки
-// - maxLength: максимально допустимая длина
-// Возвращает:
-// - обработанный текст, не превышающий maxLength и заканчивающийся полным предложением
 func truncateText(text string, maxLength int) string {
 	if len(text) <= maxLength {
 		return text

@@ -17,8 +17,8 @@ type YandexAuthService interface {
 
 // YandexGPTService определяет интерфейс для работы с Yandex GPT
 type YandexGPTService interface {
-	// GenerateImagePrompt генерирует промпт для создания изображения
-	GenerateImagePrompt(ctx context.Context, userPrompt string) (string, error)
+	// GenerateImagePrompt генерирует промпт и подпись для создания изображения
+	GenerateImagePrompt(ctx context.Context, userPrompt string) (string, string, error)
 }
 
 // ImageGenerator определяет интерфейс для сервисов генерации изображений.
