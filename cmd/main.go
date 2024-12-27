@@ -39,7 +39,7 @@ type App struct {
 
 // newApp создает новый экземпляр приложения
 // Factory Pattern: Создание сложного объекта через фабричный метод
-func newApp(ctx context.Context) (*App, error) {
+func newApp() (*App, error) {
 	// Инициализируем логгер
 	log, err := logger.New(logger.Config{
 		Level:     logger.InfoLevel,
@@ -50,28 +50,34 @@ func newApp(ctx context.Context) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize logger: %w", err)
 	}
+	log.Debug(context.Background(), "Logger initialized successfully", nil)
 
 	// Загружаем конфигурацию
 	cfg, err := config.New()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
+	log.Debug(context.Background(), "Configuration loaded successfully", nil)
 
 	// Инициализируем метрики
 	mp, err := metrics.InitMetrics()
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize metrics: %w", err)
 	}
+	log.Debug(context.Background(), "Metrics initialized successfully", nil)
 
 	// Инициализируем сервисы
 	// Builder Pattern: Пошаговое создание сложного объекта
 	authService := service.NewYandexAuthService(cfg, log)
+	log.Debug(context.Background(), "Auth service initialized successfully", nil)
+
 	gptService := service.NewYandexGPTService(cfg, log, authService)
 
 	botService, err := service.NewBotService(cfg, log, authService, gptService)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bot service: %w", err)
 	}
+	log.Debug(context.Background(), "Bot service initialized successfully", nil)
 
 	return &App{
 		bot:     botService,
@@ -83,6 +89,11 @@ func newApp(ctx context.Context) (*App, error) {
 // startHealthServer запускает HTTP сервер для health checks
 // Health Check Pattern: Отдельный эндпоинт для проверки здоровья сервиса
 func (a *App) startHealthServer(ctx context.Context) {
+
+	a.log.Debug(ctx, "Starting health server", map[string]interface{}{
+		"port": 8081,
+	})
+
 	mux := http.NewServeMux()
 
 	// Liveness probe
@@ -112,6 +123,7 @@ func (a *App) startHealthServer(ctx context.Context) {
 	// Graceful shutdown для health сервера
 	go func() {
 		<-ctx.Done()
+		a.log.Debug(ctx, "Shutting down health server", nil)
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
@@ -125,13 +137,19 @@ func (a *App) startHealthServer(ctx context.Context) {
 // run запускает основной цикл приложения
 // Command Pattern: Инкапсуляция всех операций по запуску приложения
 func (a *App) run(ctx context.Context) error {
+	// run запускает основной цикл приложения
+	// Command Pattern: Инкапсуляция всех операций по запуску приложения
 	// Запускаем health checks
+
+	a.log.Debug(ctx, "Starting health server", nil)
 	a.startHealthServer(ctx)
 
 	// Запускаем сервер метрик
+	a.log.Debug(ctx, "Starting metrics server", nil)
 	metrics.StartMetricsServer()
 
 	// Запускаем обработчик обновлений
+	a.log.Debug(ctx, "Starting update handler", nil)
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
@@ -147,9 +165,11 @@ func (a *App) shutdown(ctx context.Context) {
 	a.log.Info(ctx, "Starting graceful shutdown", nil)
 
 	// Останавливаем бота
+	a.log.Info(ctx, "Stopping bot", nil)
 	a.bot.Stop()
 
 	// Ожидаем завершения всех горутин
+	a.log.Info(ctx, "Waiting for goroutines to complete", nil)
 	done := make(chan struct{})
 	go func() {
 		a.wg.Wait()
@@ -175,6 +195,11 @@ func (a *App) shutdown(ctx context.Context) {
 // handleUpdates обрабатывает входящие сообщения от Telegram
 // Worker Pool Pattern: Ограничение количества одновременных обработчиков
 func (a *App) handleUpdates(ctx context.Context) {
+	a.log.Info(ctx, "Starting update handler", nil)
+	defer func() {
+		a.log.Info(ctx, "Update handler stopped", nil)
+	}()
+
 	updateConfig := tgbotapi.NewUpdate(0)
 	updateConfig.Timeout = 30
 
@@ -398,11 +423,13 @@ func main() {
 	defer cancel()
 
 	// Инициализируем приложение
-	app, err := newApp(ctx)
+	app, err := newApp()
 	if err != nil {
 		fmt.Printf("Failed to initialize application: %v\n", err)
 		os.Exit(1)
 	}
+
+	app.log.Debug(ctx, "Application initialized successfully", nil)
 
 	// Настраиваем обработку сигналов завершения
 	sigChan := make(chan os.Signal, 1)
@@ -414,6 +441,8 @@ func main() {
 			"error": err.Error(),
 		})
 	}
+
+	app.log.Info(ctx, "Application started successfully", nil)
 
 	// Ожидаем сигнал завершения
 	<-sigChan

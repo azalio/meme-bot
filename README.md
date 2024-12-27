@@ -183,6 +183,9 @@ if err != nil {
 ```
 
 3. **Context Cancellation**:
+
+[Обучающее видео](https://www.youtube.com/watch?v=Fjkckov4F38)
+
 ```go
 select {
 case <-ctx.Done():
