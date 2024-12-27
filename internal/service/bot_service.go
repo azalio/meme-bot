@@ -88,7 +88,7 @@ func (s *BotServiceImpl) HandleCommand(ctx context.Context, command string, args
 	case "meme":
 		// Use a default prompt if none is provided
 		if args == "" {
-			args = "Придумай и опиши какой-нибудь мем как будто это картинка"
+			args = "Придумай и опиши какой-нибудь мем. Используй любые свои фантазии. Используй современные злободневные тренды."
 		}
 
 		// Enhance the prompt using GPT
