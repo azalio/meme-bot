@@ -43,22 +43,27 @@ func newApp() (*App, error) {
 	// Инициализируем логгер
 	logLevel := logger.InfoLevel
 
-	// Загружаем конфигурацию
-	cfg, err := config.New()
-	if err != nil {
-		return nil, fmt.Errorf("failed to load config: %w", err)
-	}
-
-	if cfg.MemeDebug == "1" {
-		logLevel = logger.DebugLevel
-	}
-
 	log, err := logger.New(logger.Config{
 		Level:     logLevel,
 		Service:   "meme-bot",
 		Env:       os.Getenv("ENVIRONMENT"),
 		GitCommit: os.Getenv("GIT_COMMIT"),
 	})
+
+	// Загружаем конфигурацию
+	// Так как конфигуарция тоже нуждается в логгировании,
+	// но дебаг уровень выставлен в конфигуарции,
+	// то сначала создаем логгер, потом уже устанавливаем дебаг уровень.
+	cfg, err := config.New("", "", log)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Проверяем что включен DEBUG уровень логгирования
+	if cfg.MemeDebug == "1" {
+		logLevel = logger.DebugLevel
+		log.SetLevel(logLevel)
+	}
 
 	log.Debug(context.Background(), "Configuration loaded successfully", nil)
 
@@ -208,56 +213,85 @@ func (a *App) shutdown(ctx context.Context) {
 
 // handleUpdates обрабатывает входящие сообщения от Telegram
 // Worker Pool Pattern: Ограничение количества одновременных обработчиков
+// Метод использует пул горутин для обработки команд, чтобы избежать перегрузки системы.
 func (a *App) handleUpdates(ctx context.Context) {
+	// Логируем начало работы обработчика обновлений
 	a.log.Info(ctx, "Starting update handler", nil)
+	// Логируем завершение работы обработчика обновлений при выходе из функции
 	defer func() {
 		a.log.Info(ctx, "Update handler stopped", nil)
 	}()
 
+	// Создаем конфигурацию для получения обновлений от Telegram
 	updateConfig := tgbotapi.NewUpdate(0)
-	updateConfig.Timeout = 30
+	updateConfig.Timeout = 30 // Таймаут для получения обновлений
 
+	// Получаем канал обновлений от Telegram бота
 	updates := a.bot.GetUpdatesChan(updateConfig)
+
+	// Создаем канал для передачи ошибок, возникающих при обработке команд
 	errorChan := make(chan error, 1)
+
+	// Создаем пул горутин для ограничения количества одновременных обработчиков
 	workerPool := make(chan struct{}, workerPoolSize)
 
+	// Основной цикл обработки обновлений
 	for {
 		select {
 		case <-ctx.Done():
+			// Если контекст завершен, останавливаем обработчик обновлений
 			a.log.Info(ctx, "Stopping update handler", nil)
 			return
 		case err := <-errorChan:
+			// Если произошла ошибка при обработке команда, логируем её
 			a.log.Error(ctx, "Error handling command", map[string]interface{}{
 				"error": err.Error(),
 			})
 		case update, ok := <-updates:
+			// Получаем обновление из канала
 			if !ok {
+				// Если канал обновлений закрыт, завершаем работу обработчика
 				a.log.Info(ctx, "Update channel closed", nil)
 				return
 			}
 
+			// Если обновление не содержит сообщения, пропускаем его
 			if update.Message == nil {
 				continue
 			}
 
+			// Логируем полученное сообщение
 			a.log.Info(ctx, "Received message", map[string]interface{}{
 				"user":    update.Message.From.UserName,
 				"message": update.Message.Text,
 			})
 
+			// Если сообщение является командой, обрабатываем её
 			if update.Message.IsCommand() {
+				// Увеличиваем счетчик WaitGroup для отслеживания активных горутин
 				a.wg.Add(1)
 				go func(update tgbotapi.Update) {
-					workerPool <- struct{}{}        // Занимаем слот в пуле
-					defer func() { <-workerPool }() // Освобождаем слот
+					// Занимаем слот в пуле горутин
+					// Горутина занимает слот в пуле, отправляя пустую структуру в канал.
+					// Если все слоты заняты, выполнение блокируется до освобождения одного из них.
+					workerPool <- struct{}{}
+					// Освобождаем слот в пуле горутин при завершении обработки
+					// После завершения выполнения задачи горутина освобождает слот, читая из канала.
+					// Это позволяет другим горутинам занять освободившийся слот.
+					defer func() { <-workerPool }()
+					// Уменьшаем счетчик WaitGroup при завершении обработки
 					defer a.wg.Done()
 
+					// Извлекаем команду и аргументы из сообщения
 					command := update.Message.Command()
 					args := strings.TrimSpace(update.Message.CommandArguments())
 
+					// Создаем контекст с таймаутом для обработки команды
 					cmdCtx, cancel := context.WithTimeout(ctx, commandTimeout)
+					// Отменяем контекст при завершении обработки
 					defer cancel()
 
+					// Обрабатываем команду и передаем ошибку в канал, если она возникла
 					if err := a.handleCommand(cmdCtx, update, command, args); err != nil {
 						errorChan <- fmt.Errorf("command %s failed: %w", command, err)
 					}

@@ -70,6 +70,7 @@ type Logger struct {
 	env       string
 	hostname  string
 	gitCommit string
+	fields    map[string]interface{} // Добавляем поле для дополнительных полей
 }
 
 // LogEntry представляет структуру JSON-записи лога
@@ -161,8 +162,17 @@ func (l *Logger) writeLog(ctx context.Context, level Level, output *os.File, msg
 
 // With добавляет дополнительные поля к логу
 func (l *Logger) With(fields map[string]interface{}) *Logger {
-	newLogger := *l
-	return &newLogger
+	newLogger := &Logger{
+		// Копируем только необходимые поля, исключая мьютекс
+		level:     l.level,
+		service:   l.service,
+		env:       l.env,
+		hostname:  l.hostname,
+		gitCommit: l.gitCommit,
+		// Добавляем новые поля, если они нужны
+		fields: fields, // Если вы хотите добавить дополнительные поля, раскомментируйте эту строку
+	}
+	return newLogger
 }
 
 // Debug логирует отладочное сообщение
