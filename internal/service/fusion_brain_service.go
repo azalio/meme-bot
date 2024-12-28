@@ -229,6 +229,10 @@ func (s *FusionBrainServiceImpl) checkAvailability(ctx context.Context) (bool, e
 }
 
 func (s *FusionBrainServiceImpl) startImageGeneration(ctx context.Context, prompt string) (string, error) {
+	startTime := time.Now()
+	defer func() {
+		metrics.APIResponseTime.Observe(time.Since(startTime).Seconds(), attribute.String("service", "fusion_brain"))
+	}()
 	params := GenerateRequest{
 		Type:      "GENERATE",
 		NumImages: 1,

@@ -113,6 +113,10 @@ func (s *YandexArtServiceImpl) GenerateImage(ctx context.Context, promptText str
 // - string: ID операции для отслеживания прогресса
 // - error: ошибку в случае проблем с запуском генерации
 func (s *YandexArtServiceImpl) startImageGeneration(ctx context.Context, prompt string, iamToken string) (string, error) {
+	startTime := time.Now()
+	defer func() {
+		metrics.APIResponseTime.Observe(time.Since(startTime).Seconds(), attribute.String("service", "yandex_art"))
+	}()
 	s.logger.Info(ctx, "Initiating image generation request", map[string]interface{}{
 		"prompt_length": len(prompt),
 	})

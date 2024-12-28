@@ -84,6 +84,18 @@ func (s *BotServiceImpl) GetUpdatesChan(config tgbotapi.UpdateConfig) tgbotapi.U
 // HandleCommand processes bot commands using the Command pattern.
 // It currently supports the "meme" command, which generates an image based on the provided prompt.
 func (s *BotServiceImpl) HandleCommand(ctx context.Context, command string, args string) ([]byte, error, string) {
+	// Начинаем отсчет времени выполнения команды
+	startTime := time.Now()
+	defer func() {
+		metrics.CommandDuration.Observe(time.Since(startTime).Seconds())
+	}()
+
+	// Увеличиваем счетчик активных горутин
+	metrics.ActiveGoroutines.Inc()
+	defer metrics.ActiveGoroutines.Dec()
+
+	// Увеличиваем счетчик частоты команд
+	metrics.CommandFrequency.Inc(command)
 	switch command {
 	case "meme":
 		// Use a default prompt if none is provided

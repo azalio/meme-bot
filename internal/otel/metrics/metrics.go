@@ -51,6 +51,32 @@ var (
 	// YandexArtFailureCounter подсчитывает количество неуспешных генераций через YandexArt.
 	YandexArtFailureCounter *Counter
 
+	// Новые метрики
+	CommandDuration        *Histogram
+	PromptGenerationTime   *Histogram
+	APIResponseTime        *Histogram
+	ActiveGoroutines       *Gauge
+	MemoryUsage            *Gauge
+	OpenHTTPConnections    *Gauge
+	PromptQuality          *Histogram
+	ImageQuality           *Histogram
+	ActiveUsers            *Counter
+	CommandFrequency       *Counter
+	UserResponseTime       *Histogram
+	APIErrors              *Counter
+	MessageSendErrors      *Counter
+	CommandErrors          *Counter
+	ImageGenerationTime    *Histogram
+	RequestsPerSecond      *Counter
+	ServiceAvailability    *Gauge
+	Downtime               *Counter
+	UserSatisfaction       *Gauge
+	ReturningUsers         *Counter
+	UnauthorizedAccess     *Counter
+	AuthErrors             *Counter
+	CommandPopularity      *Counter
+	RequestTrends          *Counter
+
 	// once гарантирует, что инициализация метрик произойдет только один раз
 	once sync.Once
 )
@@ -68,6 +94,41 @@ type Counter struct {
 // значение, но и процентили (например, 95% запросов укладываются в определенное время).
 type Histogram struct {
 	histogram metric.Float64Histogram
+}
+
+type Gauge struct {
+	gauge metric.Float64ObservableGauge
+	value float64
+	mu    sync.Mutex
+}
+
+func (mp *MetricProvider) NewGauge(name, description string) (*Gauge, error) {
+	gauge, err := mp.meter.Float64ObservableGauge(
+		name,
+		metric.WithDescription(description),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &Gauge{gauge: gauge}, nil
+}
+
+func (g *Gauge) Set(value float64) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.value = value
+}
+
+func (g *Gauge) Inc() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.value++
+}
+
+func (g *Gauge) Dec() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.value--
 }
 
 // InitMetrics инициализирует систему метрик и настраивает экспорт в Prometheus.
@@ -176,6 +237,57 @@ func InitMetrics() (*MetricProvider, error) {
 		if err != nil {
 			log.Printf("Failed to create YandexArt failure counter: %v", err)
 		}
+
+		// Инициализация новых метрик
+		CommandDuration, err = mp.NewHistogram(
+			"meme_bot_command_duration_seconds",
+			"Time taken to process commands",
+		)
+		if err != nil {
+			log.Printf("Failed to create command duration histogram: %v", err)
+		}
+
+		PromptGenerationTime, err = mp.NewHistogram(
+			"meme_bot_prompt_generation_duration_seconds", 
+			"Time taken to generate enhanced prompts",
+		)
+		if err != nil {
+			log.Printf("Failed to create prompt generation time histogram: %v", err)
+		}
+
+		APIResponseTime, err = mp.NewHistogram(
+			"meme_bot_api_response_duration_seconds",
+			"Time taken to get responses from external APIs",
+		)
+		if err != nil {
+			log.Printf("Failed to create API response time histogram: %v", err)
+		}
+
+		ActiveGoroutines, err = mp.NewGauge(
+			"meme_bot_active_goroutines",
+			"Number of active goroutines",
+		)
+		if err != nil {
+			log.Printf("Failed to create active goroutines gauge: %v", err)
+		}
+
+		MemoryUsage, err = mp.NewGauge(
+			"meme_bot_memory_usage_bytes",
+			"Current memory usage of the bot",
+		)
+		if err != nil {
+			log.Printf("Failed to create memory usage gauge: %v", err)
+		}
+
+		OpenHTTPConnections, err = mp.NewGauge(
+			"meme_bot_open_http_connections",
+			"Number of open HTTP connections",
+		)
+		if err != nil {
+			log.Printf("Failed to create open HTTP connections gauge: %v", err)
+		}
+
+		// Добавьте инициализацию остальных метрик по аналогии...
 	})
 
 	return mp, nil
