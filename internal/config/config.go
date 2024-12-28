@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/azalio/meme-bot/pkg/logger"
 	"github.com/joho/godotenv"
