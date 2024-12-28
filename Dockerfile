@@ -8,7 +8,7 @@ WORKDIR /app
 COPY go.mod go.sum ./
 
 # Загружаем зависимости
-RUN go mod download
+# RUN go mod download
 
 # Копируем исходный код в контейнер
 COPY . .
@@ -23,9 +23,6 @@ WORKDIR /app
 
 # Копируем собранное приложение из builder
 COPY --from=builder /app/meme-bot .
-
-# Копируем .env файл (если он используется)
-COPY .env .
 
 # Указываем порт, который будет использоваться
 EXPOSE 8081
