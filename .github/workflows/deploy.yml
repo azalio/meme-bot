@@ -20,18 +20,10 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Log in to Docker Hub
-      run: |
-        echo ${{ secrets.DOCKER_HUB_TOKEN }} | /kaniko/executor --dockerfile=Dockerfile \
-          --context=. \
-          --destination=${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
-          --cache=true \
-          --cache-repo=${{ env.DOCKER_IMAGE }}/cache \
-          --verbosity=info
-
     - name: Build and push with Kaniko
       run: |
-        /kaniko/executor --dockerfile=Dockerfile \
+        /kaniko/executor \
+          --dockerfile=Dockerfile \
           --context=. \
           --destination=${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
           --cache=true \
@@ -61,4 +53,4 @@ jobs:
         helm upgrade --install meme-bot ${{ env.HELM_CHART_PATH }} \
           --namespace ${{ env.KUBE_NAMESPACE }} \
           --set image.repository=${{ env.DOCKER_IMAGE }} \
-          --set image.tag=latest
+          --set image.tag=${{ github.sha }}
