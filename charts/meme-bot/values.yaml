@@ -70,4 +70,4 @@ secrets:
   yandexArtFolderId: ""
   fusionBrainApiKey: ""
   fusionBrainSecretKey: ""
-  memeDebug: ""
+  memeDebug: "1"
