@@ -46,7 +46,7 @@ jobs:
               IMAGE_NAME: "${{ github.repository }}/meme-bot"
 
     deploy-to-k8s:
-        runs-on: ubuntu-latest
+        runs-on: arc-runner-set
         needs: build-to-ghcr
         steps:
             - name: Checkout code
