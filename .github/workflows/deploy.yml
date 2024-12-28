@@ -86,6 +86,11 @@ jobs:
                 EOF
                 export KUBECONFIG=kubeconfig.yaml
 
+            - name: Apply RBAC permissions
+              run: |
+                kubectl apply -f .github/arc-runner-role.yaml
+                kubectl apply -f .github/arc-runner-rolebinding.yaml
+
             - name: Deploy to Kubernetes using Helm
               run: |
                 helm upgrade --install meme-bot ${{ env.HELM_CHART_PATH }} \
