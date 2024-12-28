@@ -1,0 +1,59 @@
+name: Build, Push, and Deploy
+
+on:
+  push:
+    branches:
+      - main  # Триггер на пуши в ветку main
+
+env:
+  DOCKER_IMAGE: azalio/meme-bot  # Замените на ваш Docker Hub username и имя репозитория
+  KUBE_NAMESPACE: meme-bot  # Namespace в Kubernetes, куда будет развернуто приложение
+  HELM_CHART_PATH: ./charts  # Путь к Helm chart
+
+jobs:
+  build-and-push:
+    runs-on: arc-runner-set  # Используем ваш раннер
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_HUB_USERNAME }}
+        password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: true
+        tags: ${{ env.DOCKER_IMAGE }}:$(date +%s)
+
+  deploy:
+    runs-on: arc-runner-set  # Используем ваш раннер
+    needs: build-and-push
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: 'v3.8.0'  # Укажите нужную версию Helm
+
+    - name: Configure Kubernetes
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.30.0'  # Укажите нужную версию kubectl
+
+    - name: Deploy to Kubernetes
+      run: |
+        helm upgrade --install meme-bot ${{ env.HELM_CHART_PATH }} \
+          --namespace ${{ env.KUBE_NAMESPACE }} \
+          --set image.repository=${{ env.DOCKER_IMAGE }} \
+          --set image.tag=latest
