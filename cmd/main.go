@@ -338,9 +338,11 @@ func (a *App) handleMemeCommand(ctx context.Context, update tgbotapi.Update, arg
 	processingMsg, err := a.bot.SendMessage(ctx, update.Message.Chat.ID, "Генерирую мем, пожалуйста подождите...")
 	if err != nil {
 		a.log.Error(ctx, "Failed to send start message", map[string]interface{}{
-			"error":   err.Error(),
-			"chat_id": update.Message.Chat.ID,
-			"user":    update.Message.From.UserName,
+			"error":     err.Error(),
+			"chat_id":  update.Message.Chat.ID,
+			"user":     update.Message.From.UserName,
+			"command":  "meme",
+			"function": "handleMemeCommand",
 		})
 		return fmt.Errorf("failed to send start message: %w", err)
 	}
@@ -365,6 +367,9 @@ func (a *App) handleMemeCommand(ctx context.Context, update tgbotapi.Update, arg
 				"orig_err":  err.Error(),
 				"chat_id":   update.Message.Chat.ID,
 				"user_name": update.Message.From.UserName,
+				"command":   "meme",
+				"function":  "handleMemeCommand",
+				"prompt":    args,
 			})
 		}
 		return fmt.Errorf("failed to generate image: %w", err)
@@ -374,9 +379,12 @@ func (a *App) handleMemeCommand(ctx context.Context, update tgbotapi.Update, arg
 	// Fail Gracefully Pattern: Продолжаем даже при ошибке удаления
 	if err := a.bot.DeleteMessage(ctx, update.Message.Chat.ID, processingMsg.MessageID); err != nil {
 		a.log.Error(ctx, "Failed to delete generation message", map[string]interface{}{
-			"error":   err.Error(),
-			"chat_id": update.Message.Chat.ID,
-			"msg_id":  processingMsg.MessageID,
+			"error":    err.Error(),
+			"chat_id":  update.Message.Chat.ID,
+			"msg_id":   processingMsg.MessageID,
+			"command":  "meme",
+			"function": "handleMemeCommand",
+			"user":     update.Message.From.UserName,
 		})
 	}
 

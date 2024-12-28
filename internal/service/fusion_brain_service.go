@@ -38,6 +38,7 @@ func NewFusionBrainService(log *logger.Logger) *FusionBrainServiceImpl {
 	if apiKey == "" || secretKey == "" {
 		log.Error(context.Background(), "Environment variables not set", map[string]interface{}{
 			"missing_vars": []string{"FUSION_BRAIN_API_KEY", "FUSION_BRAIN_SECRET_KEY"},
+			"service":      "fusion_brain",
 		})
 		return nil
 	}
@@ -180,8 +181,10 @@ func (s *FusionBrainServiceImpl) checkAvailability(ctx context.Context) (bool, e
 		fmt.Sprintf(fusionBrainBaseURL+"key/api/v1/text2image/availability?model_id=%d", s.modelID), nil)
 	if err != nil {
 		s.logger.Error(ctx, "Failed to create availability check request", map[string]interface{}{
-			"error":   err.Error(),
-			"modelID": s.modelID,
+			"error":    err.Error(),
+			"modelID":  s.modelID,
+			"service":  "fusion_brain",
+			"function": "checkAvailability",
 		})
 		return false, fmt.Errorf("creating request: %w", err)
 	}
