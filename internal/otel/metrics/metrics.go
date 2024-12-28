@@ -309,10 +309,11 @@ func (mp *MetricProvider) NewCounter(name, description string) (*Counter, error)
 }
 
 // NewHistogram создает новую гистограмму
-func (mp *MetricProvider) NewHistogram(name, description string) (*Histogram, error) {
+func (mp *MetricProvider) NewHistogram(name, description string, opts ...metric.Float64HistogramOption) (*Histogram, error) {
 	histogram, err := mp.meter.Float64Histogram(
 		name,
 		metric.WithDescription(description),
+		opts...,
 	)
 	if err != nil {
 		return nil, err
@@ -330,12 +331,12 @@ func (c *Counter) Inc(label string) {
 	)
 }
 
-// Observe записывает значение в гистограмму
-func (h *Histogram) Observe(value float64) {
+// Observe записывает значение в гистограмму с лейблами
+func (h *Histogram) Observe(value float64, labels ...attribute.KeyValue) {
 	if h == nil || h.histogram == nil {
 		return
 	}
-	h.histogram.Record(context.Background(), value)
+	h.histogram.Record(context.Background(), value, metric.WithAttributes(labels...))
 }
 
 // StartMetricsServer запускает HTTP сервер для экспорта метрик Prometheus
