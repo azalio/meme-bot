@@ -103,14 +103,24 @@ type Gauge struct {
 }
 
 func (mp *MetricProvider) NewGauge(name, description string) (*Gauge, error) {
-	gauge, err := mp.meter.Float64ObservableGauge(
+	gauge := &Gauge{}
+
+	var err error
+	gauge.gauge, err = mp.meter.Float64ObservableGauge(
 		name,
 		metric.WithDescription(description),
+		metric.WithFloat64Callback(func(ctx context.Context, o metric.Float64Observer) error {
+			gauge.mu.Lock()
+			defer gauge.mu.Unlock()
+			o.Observe(gauge.value)
+			return nil
+		}),
 	)
 	if err != nil {
 		return nil, err
 	}
-	return &Gauge{gauge: gauge}, nil
+
+	return gauge, nil
 }
 
 func (g *Gauge) Set(value float64) {
