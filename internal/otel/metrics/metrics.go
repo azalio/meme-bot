@@ -52,30 +52,30 @@ var (
 	YandexArtFailureCounter *Counter
 
 	// Новые метрики
-	CommandDuration        *Histogram
-	PromptGenerationTime   *Histogram
-	APIResponseTime        *Histogram
-	ActiveGoroutines       *Gauge
-	MemoryUsage            *Gauge
-	OpenHTTPConnections    *Gauge
-	PromptQuality          *Histogram
-	ImageQuality           *Histogram
-	ActiveUsers            *Counter
-	CommandFrequency       *Counter
-	UserResponseTime       *Histogram
-	APIErrors              *Counter
-	MessageSendErrors      *Counter
-	CommandErrors          *Counter
-	ImageGenerationTime    *Histogram
-	RequestsPerSecond      *Counter
-	ServiceAvailability    *Gauge
-	Downtime               *Counter
-	UserSatisfaction       *Gauge
-	ReturningUsers         *Counter
-	UnauthorizedAccess     *Counter
-	AuthErrors             *Counter
-	CommandPopularity      *Counter
-	RequestTrends          *Counter
+	CommandDuration      *Histogram
+	PromptGenerationTime *Histogram
+	APIResponseTime      *Histogram
+	ActiveGoroutines     *Gauge
+	MemoryUsage          *Gauge
+	OpenHTTPConnections  *Gauge
+	PromptQuality        *Histogram
+	ImageQuality         *Histogram
+	ActiveUsers          *Counter
+	CommandFrequency     *Counter
+	UserResponseTime     *Histogram
+	APIErrors            *Counter
+	MessageSendErrors    *Counter
+	CommandErrors        *Counter
+	ImageGenerationTime  *Histogram
+	RequestsPerSecond    *Counter
+	ServiceAvailability  *Gauge
+	Downtime             *Counter
+	UserSatisfaction     *Gauge
+	ReturningUsers       *Counter
+	UnauthorizedAccess   *Counter
+	AuthErrors           *Counter
+	CommandPopularity    *Counter
+	RequestTrends        *Counter
 
 	// once гарантирует, что инициализация метрик произойдет только один раз
 	once sync.Once
@@ -248,7 +248,7 @@ func InitMetrics() (*MetricProvider, error) {
 		}
 
 		PromptGenerationTime, err = mp.NewHistogram(
-			"meme_bot_prompt_generation_duration_seconds", 
+			"meme_bot_prompt_generation_duration_seconds",
 			"Time taken to generate enhanced prompts",
 		)
 		if err != nil {
