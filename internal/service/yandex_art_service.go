@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/azalio/meme-bot/internal/config"
+	"github.com/azalio/meme-bot/internal/otel/metrics"
 	"github.com/azalio/meme-bot/pkg/logger"
 )
 
