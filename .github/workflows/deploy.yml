@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main  # Триггер на пуши в ветку main
-
+  workflow_dispatch:
 env:
   DOCKER_IMAGE: azalio/meme-bot  # Замените на ваш Docker Hub username и имя репозитория
   KUBE_NAMESPACE: meme-bot  # Namespace в Kubernetes, куда будет развернуто приложение
