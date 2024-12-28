@@ -5,7 +5,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
 subjects:
 - kind: ServiceAccount
-  name: {{ .Values.serviceAccount.name }}
+  name: meme-bot-deployer
   namespace: {{ .Release.Namespace }}
 roleRef:
   kind: Role

@@ -1,3 +1,4 @@
 .env
 ./meme-bot
 gha-runner-scale-set-value.yml
+.aider*

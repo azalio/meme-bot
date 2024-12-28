@@ -1,9 +1,0 @@
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: meme-bot-deployer-role
-  namespace: meme-bot
-rules:
-- apiGroups: ["", "apps", "batch", "extensions"]
-  resources: ["deployments", "services", "configmaps", "secrets", "pods", "jobs", "cronjobs"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
