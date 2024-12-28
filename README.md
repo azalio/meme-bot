@@ -2,21 +2,32 @@
 
 Telegram бот для генерации мемов с использованием Yandex GPT и Yandex Art API.
 
-
 [![Build, Push, and Deploy meme-bot](https://github.com/azalio/meme-bot/actions/workflows/deploy.yml/badge.svg)](https://github.com/azalio/meme-bot/actions/workflows/deploy.yml)
 
 ## Описание
 
-Бот использует Yandex GPT для генерации описания мема на основе пользовательского ввода и Yandex Art для создания изображения. Проект построен с использованием принципов Clean Architecture и современных паттернов разработки.
+Этот проект представляет собой Telegram бота, который генерирует мемы на основе текста, введенного пользователем. Бот использует Yandex GPT для создания описания мема и Yandex Art API для генерации изображения. Проект построен с использованием принципов Clean Architecture и современных паттернов разработки.
+
+## Как это работает?
+
+1. **Пользователь отправляет команду `/meme [текст]`** в Telegram.
+2. Бот отправляет запрос в Yandex GPT, чтобы улучшить текст и создать описание для мема.
+3. Бот использует Yandex Art API для генерации изображения на основе полученного описания.
+4. Сгенерированный мем отправляется пользователю в Telegram.
 
 ## Архитектурные паттерны
 
-### Dependency Injection
+### 1. **Clean Architecture**
+Проект разделен на слои:
+- **Внешний слой**: Взаимодействие с внешними API (Telegram, Yandex GPT, Yandex Art).
+- **Слой бизнес-логики**: Обработка команд, генерация мемов.
+- **Слой данных**: Конфигурация и переменные окружения.
 
-В проекте используется внедрение зависимостей для уменьшения связанности компонентов. Пример:
+### 2. **Dependency Injection**
+Зависимости (например, сервисы для работы с API) передаются в конструкторы, что делает код более тестируемым и гибким.
 
+Пример:
 ```go
-// Service factory с внедрением зависимостей
 func NewBotService(cfg *config.Config, log *logger.Logger, art YandexArtService) (*BotServiceImpl, error) {
     bot, err := tgbotapi.NewBotAPI(cfg.TelegramToken)
     if err != nil {
@@ -31,10 +42,10 @@ func NewBotService(cfg *config.Config, log *logger.Logger, art YandexArtService)
 }
 ```
 
-### Interface Segregation
+### 3. **Interface Segregation**
+Сервисы определяются через интерфейсы, что позволяет легко заменять реализации.
 
-Сервисы определяются через интерфейсы для лучшей абстракции:
-
+Пример:
 ```go
 type BotService interface {
     GetUpdatesChan(config tgbotapi.UpdateConfig) tgbotapi.UpdatesChannel
@@ -43,15 +54,51 @@ type BotService interface {
     SendPhoto(ctx context.Context, chatID int64, photo []byte) error
     Stop()
 }
+```
 
-type YandexAuthService interface {
-    GetIAMToken(ctx context.Context) (string, error)
+### 4. **Factory Method**
+Создание сервисов происходит через фабричные методы, что упрощает управление зависимостями.
+
+Пример:
+```go
+func NewYandexAuthService(cfg *config.Config, log *logger.Logger) *YandexAuthServiceImpl {
+    service := &YandexAuthServiceImpl{
+        config: cfg,
+        logger: log,
+    }
+    go service.refreshTokenPeriodically()
+    return service
 }
+```
+
+### 5. **Graceful Shutdown**
+Приложение корректно завершает работу при получении сигнала завершения (например, `SIGINT` или `SIGTERM`).
+
+Пример:
+```go
+func (a *App) shutdown(ctx context.Context) {
+    a.log.Info(ctx, "Starting graceful shutdown", nil)
+    a.bot.Stop()
+    a.wg.Wait()
+}
+```
+
+### 6. **Worker Pool**
+Для обработки команд используется пул горутин, чтобы избежать перегрузки системы.
+
+Пример:
+```go
+workerPool := make(chan struct{}, workerPoolSize)
+go func(update tgbotapi.Update) {
+    workerPool <- struct{}{}
+    defer func() { <-workerPool }()
+    // Обработка команды
+}(update)
 ```
 
 ## Требования
 
-- Go 1.23.2 или выше
+- Go 1.21 или выше
 - Telegram Bot Token
 - Yandex OAuth Token
 - Yandex Cloud Folder ID
@@ -64,7 +111,7 @@ git clone https://github.com/azalio/meme-bot.git
 cd meme-bot
 ```
 
-2. Создать файл .env со следующим содержимым:
+2. Создать файл `.env` со следующим содержимым:
 ```env
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 YANDEX_OAUTH_TOKEN=your_yandex_oauth_token
@@ -98,122 +145,34 @@ go build -o meme-bot cmd/main.go
 ```
 .
 ├── cmd/
-│   └── main.go           # Точка входа в приложение, инициализация DI
+│   └── main.go           # Точка входа в приложение
 ├── internal/
-│   ├── config/          # Конфигурация приложения
-│   │   └── config.go    # Загрузка и валидация конфигурации
-│   ├── middleware/      # Middleware для логирования и обработки ошибок
-│   │   ├── logger.go    # Middleware для логирования запросов
-│   │   └── recover.go   # Middleware для обработки паник
-│   └── service/         # Бизнес-логика и сервисы
-│       ├── interfaces.go # Определения интерфейсов сервисов
-│       ├── bot.go       # Реализация Telegram бота
-│       ├── yandex_auth.go # Сервис аутентификации Yandex
-│       ├── yandex_gpt.go  # Сервис работы с YandexGPT
-│       └── yandex_art.go  # Сервис генерации изображений
+│   ├── config/           # Конфигурация приложения
+│   ├── service/          # Бизнес-логика и сервисы
+│   └── otel/             # Инструменты для мониторинга
 ├── pkg/
-│   └── logger/          # Пакет для логирования
-│       └── logger.go    # Thread-safe логгер с уровнями
-├── .env                 # Конфигурационные переменные
-├── .gitignore
+│   └── logger/           # Логирование
+├── charts/               # Kubernetes Helm-чарты
+├── .env                  # Конфигурационные переменные
+├── Dockerfile            # Конфигурация Docker
 ├── go.mod
 ├── go.sum
 └── README.md
 ```
 
-### Взаимодействие компонентов
-
-1. **Config** загружает конфигурацию из переменных окружения и проверяет корректность.
-
-2. **Logger** обеспечивает потокобезопасное логирование с разными уровнями (INFO, ERROR, DEBUG).
-
-3. **Service Layer**:
-   - **AuthService**: Управляет IAM токенами для Yandex Cloud
-   - **GPTService**: Улучшает пользовательские промпты через YandexGPT
-   - **ArtService**: Генерирует изображения используя Yandex Art API
-   - **BotService**: Обрабатывает команды пользователя и координирует другие сервисы
-
-## Архитектурные решения
-
-### Factory Method Pattern
-
-Создание сервисов происходит через factory методы:
-
-```go
-// Фабричный метод для создания сервиса аутентификации
-func NewYandexAuthService(cfg *config.Config, log *logger.Logger) *YandexAuthServiceImpl {
-    service := &YandexAuthServiceImpl{
-        config: cfg,
-        logger: log,
-    }
-    go service.refreshTokenPeriodically()
-    return service
-}
-```
-
-### Service Layer Pattern
-
-Бизнес-логика инкапсулирована в сервисах:
-
-```go
-type YandexGPTServiceImpl struct {
-    config      *config.Config
-    logger      *logger.Logger
-    authService YandexAuthService
-}
-
-func (s *YandexGPTServiceImpl) GenerateImagePrompt(ctx context.Context, userPrompt string) (string, error) {
-    // Бизнес-логика генерации промпта
-}
-```
-
-### Error Handling Patterns
-
-1. **Error Wrapping**:
-```go
-if err != nil {
-    return nil, fmt.Errorf("failed to generate image: %w", err)
-}
-```
-
-2. **Graceful Degradation**:
-```go
-enhancedPrompt, err := s.gptService.GenerateImagePrompt(ctx, promptText)
-if err != nil {
-    s.logger.Error("Failed to generate enhanced prompt: %v, using original prompt", err)
-    enhancedPrompt = promptText
-}
-```
-
-3. **Context Cancellation**:
-
-[Обучающее видео](https://www.youtube.com/watch?v=Fjkckov4F38)
-
-```go
-select {
-case <-ctx.Done():
-    return nil, fmt.Errorf("operation cancelled: %w", ctx.Err())
-case <-ticker.C:
-    // Продолжаем обработку
-}
-```
-
-### Рекомендации по доработке
+## Рекомендации по доработке
 
 1. **Тестирование**:
-   - Добавить unit-тесты для сервисов
-   - Реализовать integration тесты с моками API
-   - Добавить benchmark тесты для критичных операций
+   - Добавить unit-тесты для сервисов.
+   - Реализовать integration тесты с моками API.
 
 2. **Мониторинг**:
-   - Добавить метрики Prometheus
-   - Реализовать health checks
-   - Настроить трейсинг запросов
+   - Добавить метрики Prometheus.
+   - Настроить трейсинг запросов.
 
 3. **Оптимизация**:
-   - Кэширование результатов генерации
-   - Пулл соединений для HTTP клиентов
-   - Rate limiting для API запросов
+   - Кэширование результатов генерации.
+   - Пулл соединений для HTTP клиентов.
 
 ## Вклад в разработку
 
