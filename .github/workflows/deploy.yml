@@ -61,4 +61,10 @@ jobs:
                 helm upgrade --install meme-bot ${{ env.HELM_CHART_PATH }} \
                   --namespace ${{ env.KUBE_NAMESPACE }} \
                   --set image.repository=${{ env.DOCKER_IMAGE }} \
-                  --set image.tag=$(echo ${GITHUB_SHA} | head -c 7)
+                  --set image.tag=$(echo ${GITHUB_SHA} | head -c 7) \
+                  --set secrets.telegramBotToken=${{ secrets.TELEGRAM_BOT_TOKEN }} \
+                  --set secrets.yandexOAuthToken=${{ secrets.YANDEX_OAUTH_TOKEN }} \
+                  --set secrets.yandexArtFolderId=${{ secrets.YANDEX_ART_FOLDER_ID }} \
+                  --set secrets.fusionBrainApiKey=${{ secrets.FUSION_BRAIN_API_KEY }} \
+                  --set secrets.fusionBrainSecretKey=${{ secrets.FUSION_BRAIN_SECRET_KEY }} \
+                  --set secrets.memeDebug=${{ secrets.MEME_DEBUG }}

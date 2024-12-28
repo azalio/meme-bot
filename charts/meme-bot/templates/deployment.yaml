@@ -42,6 +42,37 @@ spec:
             {{- toYaml .Values.readinessProbe | nindent 12 }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          env:
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: meme-bot-secrets
+                  key: TELEGRAM_BOT_TOKEN
+            - name: YANDEX_OAUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: meme-bot-secrets
+                  key: YANDEX_OAUTH_TOKEN
+            - name: YANDEX_ART_FOLDER_ID
+              valueFrom:
+                secretKeyRef:
+                  name: meme-bot-secrets
+                  key: YANDEX_ART_FOLDER_ID
+            - name: FUSION_BRAIN_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: meme-bot-secrets
+                  key: FUSION_BRAIN_API_KEY
+            - name: FUSION_BRAIN_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: meme-bot-secrets
+                  key: FUSION_BRAIN_SECRET_KEY
+            - name: MEME_DEBUG
+              valueFrom:
+                secretKeyRef:
+                  name: meme-bot-secrets
+                  key: MEME_DEBUG
           {{- with .Values.volumeMounts }}
           volumeMounts:
             {{- toYaml . | nindent 12 }}

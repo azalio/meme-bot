@@ -63,3 +63,11 @@ volumeMounts: []
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+secrets:
+  telegramBotToken: ""
+  yandexOAuthToken: ""
+  yandexArtFolderId: ""
+  fusionBrainApiKey: ""
+  fusionBrainSecretKey: ""
+  memeDebug: ""
