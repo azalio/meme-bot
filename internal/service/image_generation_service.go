@@ -81,13 +81,16 @@ func (s *ImageGenerationService) GenerateImage(ctx context.Context, promptText s
 	}()
 
 	// Ожидаем первый успешный результат или все ошибки
+	var errors []error
+
 	for i := 0; i < 2; i++ {
 		select {
 		case imageData := <-resultChan:
 			return imageData, nil
 		case err := <-errorChan:
-			if i == 1 {
-				return nil, fmt.Errorf("all image generation services failed: %w", err)
+			errors = append(errors, err)
+			if len(errors) == 2 {
+				return nil, fmt.Errorf("all image generation services failed: %w", errors[0])
 			}
 		}
 	}
