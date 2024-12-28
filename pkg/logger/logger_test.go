@@ -2,6 +2,7 @@ package logger_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 
