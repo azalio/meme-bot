@@ -26,41 +26,22 @@ type Config struct {
 }
 
 // New создает новый экземпляр конфигурации
-// Загружает переменные окружения из .env файла
-// Если файл не найден, пытается получить переменные из окружения
-// envPath - путь к директории, где находится .env файл (по умолчанию текущая директория)
-// envName - имя .env файла (по умолчанию ".env")
-func New(envPath, envName string, logger *logger.Logger) (*Config, error) {
-	// Если путь не указан, используем текущую директорию
-	if envPath == "" {
-		envPath = "."
-	}
-	// Если имя файла не указано, используем ".env"
-	if envName == "" {
-		envName = ".env"
+// Загружает переменные окружения из указанного файла
+// Если файл не указан, использует .env в текущей директории
+// envFile - путь к файлу конфигурации (по умолчанию ".env")
+func New(envFile string, logger *logger.Logger) (*Config, error) {
+	// Если путь к файлу не указан, используем текущую директорию и файл ".env"
+	if envFile == "" {
+		envFile = ".env"
 	}
 
-	// Формируем полный путь к .env файлу
-	envFile := filepath.Join(envPath, envName)
-
-	// Пытаемся загрузить .env файл по указанному пути
+	// Пытаемся загрузить указанный файл
 	if err := godotenv.Load(envFile); err != nil {
-		// Если файл не найден, логируем это и пробуем загрузить .env из корневой директории приложения
-		logger.Warn(context.Background(), "Error loading .env file from specified path, trying root directory", map[string]interface{}{
+		// Если файл не найден, логируем это, но продолжаем работу
+		logger.Warn(context.Background(), "Error loading .env file", map[string]interface{}{
 			"error": err,
 			"path":  envFile,
 		})
-
-		// Пытаемся загрузить .env из корневой директории приложения
-		rootEnvFile := filepath.Join(".", envName)
-		if err := godotenv.Load(rootEnvFile); err != nil {
-			// Если файл не найден и в корневой директории, логируем это, но продолжаем работу
-			// так как переменные могут быть установлены в окружении
-			logger.Warn(context.Background(), "Error loading .env file from root directory", map[string]interface{}{
-				"error": err,
-				"path":  rootEnvFile,
-			})
-		}
 	}
 
 	// Получаем необходимые переменные окружения

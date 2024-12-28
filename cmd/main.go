@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync"
+	"flag"
 	"syscall"
 	"time"
 
@@ -50,11 +51,15 @@ func newApp() (*App, error) {
 		GitCommit: os.Getenv("GIT_COMMIT"),
 	})
 
+	// Добавляем обработку аргументов командной строки
+	envFile := flag.String("config", "", "Path to the .env file")
+	flag.Parse()
+
 	// Загружаем конфигурацию
 	// Так как конфигуарция тоже нуждается в логгировании,
 	// но дебаг уровень выставлен в конфигуарции,
 	// то сначала создаем логгер, потом уже устанавливаем дебаг уровень.
-	cfg, err := config.New("", "", log)
+	cfg, err := config.New(*envFile, log)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
