@@ -67,4 +67,4 @@ jobs:
                   --set secrets.yandexArtFolderId=${{ secrets.YANDEX_ART_FOLDER_ID }} \
                   --set secrets.fusionBrainApiKey=${{ secrets.FUSION_BRAIN_API_KEY }} \
                   --set secrets.fusionBrainSecretKey=${{ secrets.FUSION_BRAIN_SECRET_KEY }} \
-                  --set secrets.memeDebug=1
+                  --set secrets.memeDebug="1"
