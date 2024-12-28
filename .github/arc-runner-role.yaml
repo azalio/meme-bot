@@ -5,7 +5,7 @@ metadata:
   namespace: meme-bot
 rules:
 - apiGroups: [""]
-  resources: ["pods", "services", "configmaps", "secrets"]
+  resources: ["pods", "services", "configmaps", "secrets", "serviceaccounts"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: ["apps"]
   resources: ["deployments", "statefulsets"]
