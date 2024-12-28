@@ -13,6 +13,7 @@ import (
 	"github.com/azalio/meme-bot/internal/config"
 	"github.com/azalio/meme-bot/internal/otel/metrics"
 	"github.com/azalio/meme-bot/pkg/logger"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 const (
