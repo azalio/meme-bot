@@ -160,8 +160,17 @@ func TestLogger_Fatal(t *testing.T) {
 	var gotCode int
 	testExit := func(code int) {
 		gotCode = code
+		panic(fmt.Sprintf("exit %d", code)) // Имитируем os.Exit через панику
 	}
 	osExit = testExit
+
+	// Обрабатываем панику, чтобы тест не завершился
+	defer func() {
+		if r := recover(); r != nil {
+			// Проверяем, что паника была вызвана нашим моком
+			assert.Contains(t, r.(string), "exit 1")
+		}
+	}()
 
 	log.Fatal(context.Background(), "Test fatal message", map[string]interface{}{
 		"fatal_key": "fatal_value",
@@ -180,7 +189,7 @@ func TestLogger_Fatal(t *testing.T) {
 	assert.Equal(t, 1, gotCode)
 }
 
-// Mock os.Exit for testing
+// Mock os.Exit для тестирования
 var osExit = func(code int) {
 	panic(fmt.Sprintf("exit %d", code))
 }
