@@ -258,6 +258,7 @@ func InitMetrics() (*MetricProvider, error) {
 		APIResponseTime, err = mp.NewHistogram(
 			"meme_bot_api_response_duration_seconds",
 			"Time taken to get responses from external APIs",
+			metric.WithExplicitBucketBoundaries(0.1, 0.5, 1, 2, 5, 10),
 		)
 		if err != nil {
 			log.Printf("Failed to create API response time histogram: %v", err)
