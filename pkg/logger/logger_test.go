@@ -1,17 +1,18 @@
-package logger
+package logger_test
 
 import (
 	"context"
 	"os"
 	"testing"
 
+	"github.com/azalio/meme-bot/pkg/logger"
 	"github.com/stretchr/testify/assert"
 )
 
 // NewTestLogger создает логгер для тестирования
-func NewTestLogger() *Logger {
-	log, _ := New(Config{
-		Level:   DebugLevel,
+func NewTestLogger() *logger.Logger {
+	log, _ := logger.New(logger.Config{
+		Level:   logger.DebugLevel,
 		Service: "test",
 	})
 	return log
@@ -19,9 +20,9 @@ func NewTestLogger() *Logger {
 
 func TestLogger_Info(t *testing.T) {
 	// Создаем логгер для тестов
-	log := &Logger{
-		level:   InfoLevel,
-		service: "test-service",
+	log := &logger.Logger{
+		Level:   logger.InfoLevel,
+		Service: "test-service",
 	}
 
 	// Перенаправляем stdout для захвата вывода
@@ -51,10 +52,10 @@ func TestLogger_Info(t *testing.T) {
 }
 
 func TestLogger_Levels(t *testing.T) {
-	assert.Equal(t, "DEBUG", DebugLevel.String())
-	assert.Equal(t, "INFO", InfoLevel.String())
-	assert.Equal(t, "WARN", WarnLevel.String())
-	assert.Equal(t, "ERROR", ErrorLevel.String())
-	assert.Equal(t, "FATAL", FatalLevel.String())
-	assert.Equal(t, "UNKNOWN", Level(100).String())
+	assert.Equal(t, "DEBUG", logger.DebugLevel.String())
+	assert.Equal(t, "INFO", logger.InfoLevel.String())
+	assert.Equal(t, "WARN", logger.WarnLevel.String())
+	assert.Equal(t, "ERROR", logger.ErrorLevel.String())
+	assert.Equal(t, "FATAL", logger.FatalLevel.String())
+	assert.Equal(t, "UNKNOWN", logger.Level(100).String())
 }
