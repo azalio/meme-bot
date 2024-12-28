@@ -10,6 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// Переменная для перехвата os.Exit
+var osExit = os.Exit
+
 // NewTestLogger создает логгер для тестирования
 func NewTestLogger() *logger.Logger {
 	log, _ := logger.New(logger.Config{
@@ -154,20 +157,22 @@ func TestLogger_Fatal(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stderr = w
 
-	// Prevent actual os.Exit
-	oldOsExit := os.Exit
-	defer func() { os.Exit = oldOsExit }()
-	var gotCode int
-	testExit := func(code int) {
-		gotCode = code
-		panic(fmt.Sprintf("exit %d", code)) // Simulate os.Exit via panic
-	}
-	os.Exit = testExit
+	// Используем канал для захвата кода выхода
+	exitChan := make(chan int, 1)
+	defer close(exitChan)
 
-	// Handle panic so test doesn't fail
+	// Перехватываем os.Exit
+	oldOsExit := osExit
+	defer func() { osExit = oldOsExit }()
+	osExit = func(code int) {
+		exitChan <- code
+		panic(fmt.Sprintf("exit %d", code)) // Имитируем os.Exit через панику
+	}
+
+	// Обрабатываем панику, чтобы тест не завершился
 	defer func() {
 		if r := recover(); r != nil {
-			// Verify panic was from our mock
+			// Проверяем, что паника была вызвана нашим моком
 			assert.Contains(t, r.(string), "exit 1")
 		}
 	}()
@@ -186,5 +191,12 @@ func TestLogger_Fatal(t *testing.T) {
 	assert.Contains(t, output, `"level":"FATAL"`)
 	assert.Contains(t, output, `"message":"Test fatal message"`)
 	assert.Contains(t, output, `"fatal_key":"fatal_value"`)
-	assert.Equal(t, 1, gotCode)
+
+	// Проверяем код выхода
+	select {
+	case code := <-exitChan:
+		assert.Equal(t, 1, code)
+	default:
+		t.Fatal("os.Exit не был вызван")
+	}
 }
