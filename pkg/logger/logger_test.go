@@ -19,11 +19,12 @@ func NewTestLogger() *logger.Logger {
 }
 
 func TestLogger_Info(t *testing.T) {
-	// Создаем логгер для тестов
-	log := &logger.Logger{
+	// Создаем логгер для тестов через конструктор
+	log, err := logger.New(logger.Config{
 		Level:   logger.InfoLevel,
 		Service: "test-service",
-	}
+	})
+	assert.NoError(t, err)
 
 	// Перенаправляем stdout для захвата вывода
 	oldStdout := os.Stdout
