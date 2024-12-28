@@ -118,6 +118,14 @@ func TestLogger(t *testing.T) {
 
 		assert.Contains(t, output, `"field1":"value1"`)
 	})
+
+	t.Run("SetLevel", func(t *testing.T) {
+		log.SetLevel(InfoLevel)
+		assert.Equal(t, InfoLevel, log.GetLevel())
+
+		log.SetLevel(DebugLevel)
+		assert.Equal(t, DebugLevel, log.GetLevel())
+	})
 }
 
 // Mock os.Exit for testing
