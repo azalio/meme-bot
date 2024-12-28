@@ -60,3 +60,126 @@ func TestLogger_Levels(t *testing.T) {
 	assert.Equal(t, "FATAL", logger.FatalLevel.String())
 	assert.Equal(t, "UNKNOWN", logger.Level(100).String())
 }
+
+func TestLogger_Debug(t *testing.T) {
+	log, err := logger.New(logger.Config{
+		Level:   logger.DebugLevel,
+		Service: "test-service",
+	})
+	assert.NoError(t, err)
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	log.Debug(context.Background(), "Test debug message", map[string]interface{}{
+		"debug_key": "debug_value",
+	})
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	buf := make([]byte, 1024)
+	n, _ := r.Read(buf)
+	output := string(buf[:n])
+
+	assert.Contains(t, output, `"level":"DEBUG"`)
+	assert.Contains(t, output, `"message":"Test debug message"`)
+	assert.Contains(t, output, `"debug_key":"debug_value"`)
+}
+
+func TestLogger_Error(t *testing.T) {
+	log, err := logger.New(logger.Config{
+		Level:   logger.ErrorLevel,
+		Service: "test-service",
+	})
+	assert.NoError(t, err)
+
+	oldStdout := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	log.Error(context.Background(), "Test error message", map[string]interface{}{
+		"error_key": "error_value",
+	})
+
+	w.Close()
+	os.Stderr = oldStdout
+
+	buf := make([]byte, 1024)
+	n, _ := r.Read(buf)
+	output := string(buf[:n])
+
+	assert.Contains(t, output, `"level":"ERROR"`)
+	assert.Contains(t, output, `"message":"Test error message"`)
+	assert.Contains(t, output, `"error_key":"error_value"`)
+}
+
+func TestLogger_Warn(t *testing.T) {
+	log, err := logger.New(logger.Config{
+		Level:   logger.WarnLevel,
+		Service: "test-service",
+	})
+	assert.NoError(t, err)
+
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	log.Warn(context.Background(), "Test warn message", map[string]interface{}{
+		"warn_key": "warn_value",
+	})
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	buf := make([]byte, 1024)
+	n, _ := r.Read(buf)
+	output := string(buf[:n])
+
+	assert.Contains(t, output, `"level":"WARN"`)
+	assert.Contains(t, output, `"message":"Test warn message"`)
+	assert.Contains(t, output, `"warn_key":"warn_value"`)
+}
+
+func TestLogger_Fatal(t *testing.T) {
+	log, err := logger.New(logger.Config{
+		Level:   logger.FatalLevel,
+		Service: "test-service",
+	})
+	assert.NoError(t, err)
+
+	oldStdout := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	// Prevent actual exit
+	oldOsExit := osExit
+	defer func() { osExit = oldOsExit }()
+	var gotCode int
+	testExit := func(code int) {
+		gotCode = code
+	}
+	osExit = testExit
+
+	log.Fatal(context.Background(), "Test fatal message", map[string]interface{}{
+		"fatal_key": "fatal_value",
+	})
+
+	w.Close()
+	os.Stderr = oldStdout
+
+	buf := make([]byte, 1024)
+	n, _ := r.Read(buf)
+	output := string(buf[:n])
+
+	assert.Contains(t, output, `"level":"FATAL"`)
+	assert.Contains(t, output, `"message":"Test fatal message"`)
+	assert.Contains(t, output, `"fatal_key":"fatal_value"`)
+	assert.Equal(t, 1, gotCode)
+}
+
+// Mock os.Exit for testing
+var osExit = func(code int) {
+	panic(fmt.Sprintf("exit %d", code))
+}
