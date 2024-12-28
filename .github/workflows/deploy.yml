@@ -10,20 +10,33 @@ env:
   DOCKER_IMAGE: azalio/meme-bot
   KUBE_NAMESPACE: meme-bot
   HELM_CHART_PATH: ./charts
+
 jobs:
   build-and-push:
     runs-on: arc-runner-set
+    container:
+      image: gcr.io/kaniko-project/executor:debug
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
 
+    - name: Log in to Docker Hub
+      run: |
+        echo ${{ secrets.DOCKER_HUB_TOKEN }} | /kaniko/executor --dockerfile=Dockerfile \
+          --context=. \
+          --destination=${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
+          --cache=true \
+          --cache-repo=${{ env.DOCKER_IMAGE }}/cache \
+          --verbosity=info
+
     - name: Build and push with Kaniko
-      uses: docker/build-push-action@v4
-      with:
-        context: .
-        push: true
-        tags: ${{ env.DOCKER_IMAGE }}:$(date +%s)
-        builder: kaniko
+      run: |
+        /kaniko/executor --dockerfile=Dockerfile \
+          --context=. \
+          --destination=${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
+          --cache=true \
+          --cache-repo=${{ env.DOCKER_IMAGE }}/cache \
+          --verbosity=info
 
   deploy:
     runs-on: arc-runner-set
@@ -37,10 +50,12 @@ jobs:
       uses: azure/setup-helm@v3
       with:
         version: 'v3.8.0'
+
     - name: Configure Kubernetes
       uses: azure/setup-kubectl@v3
       with:
         version: 'v1.30.0'
+
     - name: Deploy to Kubernetes
       run: |
         helm upgrade --install meme-bot ${{ env.HELM_CHART_PATH }} \
