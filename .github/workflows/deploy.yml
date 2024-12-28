@@ -10,21 +10,40 @@ env:
   DOCKER_IMAGE: azalio/meme-bot
   KUBE_NAMESPACE: meme-bot
   HELM_CHART_PATH: ./charts
-#   KANIKO_CACHE_ARGS: "--cache=true --cache-copy-layers=true --cache-ttl=24h"
+  KANIKO_CACHE_ARGS: "--cache=true --cache-copy-layers=true --cache-ttl=24h"
 
 jobs:
-    docker:
-        runs-on: arc-runner-set
+    build-to-ghcr:
+        runs-on: arc-runner-set # uses self-hosted runner scale set
+        container:
+          image: gcr.io/kaniko-project/executor:v1.20.0-debug # the kaniko image
+        permissions:
+          contents: read # read the repository
+          packages: write # to push to GHCR, omit for other container registry. https://docs.github.com/en/packages/managing-github-packages-using-github-actions-workflows/publishing-and-installing-a-package-with-github-actions#publishing-a-package-using-an-action
+    
         steps:
-          - uses: actions/checkout@master
-          - name: Kaniko build
-            uses: aevea/action-kaniko@master
-            with:
-              image: aevea/kaniko
-              username: ${{ secrets.DOCKERHUB_USERNAME }}
-              password: ${{ secrets.DOCKERHUB_PASSWORD }}
-              cache: true
-              cache_registry: aevea/cache
+          - name: Build and Push Image to GHCR with kaniko
+            run: |
+              cat <<EOF > /kaniko/.docker/config.json
+              {
+                "auths": {
+                  "ghcr.io": {
+                    "auth": "$(echo -n "$GIT_USERNAME:$GIT_PASSWORD" | base64 -w0)"
+                  }
+                }
+              }
+              EOF
+    
+              /kaniko/executor --dockerfile="./app/Dockerfile" \
+                --context="${{ github.repositoryUrl }}#${{ github.ref }}#${{ github.sha }}"  \
+                --destination="$GH_REGISTRY/$IMAGE_NAME:$(echo ${GITHUB_SHA} | head  -c 7)" \
+                ${{ env.KANIKO_CACHE_ARGS }} \
+                --push-retry 5 
+            env: # needed to authenticate to github and download the repo
+              GIT_USERNAME: ${{ github.actor }} 
+              GIT_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+              GH_REGISTRY: "ghcr.io"
+              IMAGE_NAME: "${{ github.repository }}/meme-bot"
 
 #   deploy:
 #     runs-on: arc-runner-set
