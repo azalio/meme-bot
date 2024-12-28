@@ -2,6 +2,9 @@
 
 Telegram бот для генерации мемов с использованием Yandex GPT и Yandex Art API.
 
+
+[![Build, Push, and Deploy meme-bot](https://github.com/azalio/meme-bot/actions/workflows/deploy.yml/badge.svg)](https://github.com/azalio/meme-bot/actions/workflows/deploy.yml)
+
 ## Описание
 
 Бот использует Yandex GPT для генерации описания мема на основе пользовательского ввода и Yandex Art для создания изображения. Проект построен с использованием принципов Clean Architecture и современных паттернов разработки.
