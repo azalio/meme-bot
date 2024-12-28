@@ -154,7 +154,7 @@ func TestLogger_Fatal(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stderr = w
 
-	// Prevent actual exit
+	// Предотвращаем реальный вызов os.Exit
 	oldOsExit := osExit
 	defer func() { osExit = oldOsExit }()
 	var gotCode int
