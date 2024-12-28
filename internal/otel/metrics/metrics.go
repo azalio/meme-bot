@@ -320,6 +320,13 @@ func (mp *MetricProvider) NewCounter(name, description string) (*Counter, error)
 
 // NewHistogram создает новую гистограмму
 func (mp *MetricProvider) NewHistogram(name, description string, opts ...metric.Float64HistogramOption) (*Histogram, error) {
+	// Добавляем дефолтные границы корзин, если они не указаны
+	if len(opts) == 0 {
+		opts = append(opts, metric.WithExplicitBucketBoundaries(
+			0.1, 0.5, 1, 2, 5, 10, // Время в секундах
+		))
+	}
+
 	histogram, err := mp.meter.Float64Histogram(
 		name,
 		metric.WithDescription(description),
