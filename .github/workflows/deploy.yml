@@ -63,7 +63,27 @@ jobs:
 
             - name: Configure kubeconfig
               run: |
-                echo "${{ secrets.KUBE_CONFIG }}" > kubeconfig.yaml
+                # Create kubeconfig with Service Account token
+                cat <<EOF > kubeconfig.yaml
+                apiVersion: v1
+                kind: Config
+                clusters:
+                - name: meme-bot-cluster
+                  cluster:
+                    certificate-authority-data: ${{ secrets.KUBE_CA }}
+                    server: ${{ secrets.KUBE_SERVER }}
+                users:
+                - name: meme-bot-deployer
+                  user:
+                    token: ${{ secrets.KUBE_TOKEN }}
+                contexts:
+                - name: meme-bot-context
+                  context:
+                    cluster: meme-bot-cluster
+                    user: meme-bot-deployer
+                    namespace: ${{ env.KUBE_NAMESPACE }}
+                current-context: meme-bot-context
+                EOF
                 export KUBECONFIG=kubeconfig.yaml
 
             - name: Deploy to Kubernetes using Helm
