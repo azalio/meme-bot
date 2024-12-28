@@ -34,7 +34,7 @@ jobs:
               }
               EOF
     
-              /kaniko/executor --dockerfile="./app/Dockerfile" \
+              /kaniko/executor --dockerfile="./Dockerfile" \
                 --context="${{ github.repositoryUrl }}#${{ github.ref }}#${{ github.sha }}"  \
                 --destination="$GH_REGISTRY/$IMAGE_NAME:$(echo ${GITHUB_SHA} | head  -c 7)" \
                 ${{ env.KANIKO_CACHE_ARGS }} \
