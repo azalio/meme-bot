@@ -17,26 +17,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-    build-to-ghcr:
-        runs-on: arc-runner-set # uses self-hosted runner scale set
-        container:
-          image: gcr.io/kaniko-project/executor:v1.20.0-debug # the kaniko image
-        permissions:
-          contents: read # read the repository
-          packages: write # to push to GHCR, omit for other container registry. https://docs.github.com/en/packages/managing-github-packages-using-github-actions-workflows/publishing-and-installing-a-package-with-github-actions#publishing-a-package-using-an-action
+  test:
+    runs-on: arc-runner-set
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21' # Укажите версию Go, используемую в проекте
+
+      - name: Run tests
+        run: go test -v ./...
+
+  build-to-ghcr:
+    runs-on: arc-runner-set # uses self-hosted runner scale set
+    needs: test # Зависит от успешного выполнения тестов
+    container:
+      image: gcr.io/kaniko-project/executor:v1.20.0-debug # the kaniko image
+    permissions:
+      contents: read # read the repository
+      packages: write # to push to GHCR, omit for other container registry. https://docs.github.com/en/packages/managing-github-packages-using-github-actions-workflows/publishing-and-installing-a-package-with-github-actions#publishing-a-package-using-an-action
     
-        steps:
-          - name: Build and Push Image to GHCR with kaniko
-            run: |
-              cat <<EOF > /kaniko/.docker/config.json
-              {
-                "auths": {
-                  "ghcr.io": {
-                    "auth": "$(echo -n "$GIT_USERNAME:$GIT_PASSWORD" | base64 -w0)"
-                  }
-                }
+    steps:
+      - name: Build and Push Image to GHCR with kaniko
+        run: |
+          cat <<EOF > /kaniko/.docker/config.json
+          {
+            "auths": {
+              "ghcr.io": {
+                "auth": "$(echo -n "$GIT_USERNAME:$GIT_PASSWORD" | base64 -w0)"
               }
-              EOF
+            }
+          }
+          EOF
     
               /kaniko/executor --dockerfile="./Dockerfile" \
                 --context="${{ github.repositoryUrl }}#${{ github.ref }}#${{ github.sha }}"  \
