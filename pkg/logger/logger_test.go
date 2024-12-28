@@ -2,6 +2,7 @@ package logger_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 
@@ -153,20 +154,20 @@ func TestLogger_Fatal(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stderr = w
 
-	// Предотвращаем реальный вызов os.Exit
+	// Prevent actual os.Exit
 	oldOsExit := os.Exit
 	defer func() { os.Exit = oldOsExit }()
 	var gotCode int
 	testExit := func(code int) {
 		gotCode = code
-		panic(fmt.Sprintf("exit %d", code)) // Имитируем os.Exit через панику
+		panic(fmt.Sprintf("exit %d", code)) // Simulate os.Exit via panic
 	}
 	os.Exit = testExit
 
-	// Обрабатываем панику, чтобы тест не завершился
+	// Handle panic so test doesn't fail
 	defer func() {
 		if r := recover(); r != nil {
-			// Проверяем, что паника была вызвана нашим моком
+			// Verify panic was from our mock
 			assert.Contains(t, r.(string), "exit 1")
 		}
 	}()
