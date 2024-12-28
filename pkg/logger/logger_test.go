@@ -45,20 +45,41 @@ func captureOutput(f func(), captureStderr bool) string {
 	return string(buf[:n])
 }
 
+func TestLogger_Info(t *testing.T) {
+	// Создаем логгер для тестов
+	log := &Logger{
+		level:   InfoLevel,
+		service: "test-service",
+	}
+
+	// Перенаправляем stdout для захвата вывода
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	// Выполняем логирование
+	log.Info(context.Background(), "Test info message", map[string]interface{}{
+		"key": "value",
+	})
+
+	// Восстанавливаем stdout
+	w.Close()
+	os.Stdout = oldStdout
+
+	// Читаем захваченный вывод
+	buf := make([]byte, 1024)
+	n, _ := r.Read(buf)
+	output := string(buf[:n])
+
+	// Проверяем, что вывод содержит ожидаемые данные
+	assert.Contains(t, output, `"level":"INFO"`)
+	assert.Contains(t, output, `"message":"Test info message"`)
+	assert.Contains(t, output, `"key":"value"`)
+	assert.Contains(t, output, `"service":"test-service"`)
+}
+
 func TestLogger(t *testing.T) {
 	log := NewTestLogger()
-
-	t.Run("Info", func(t *testing.T) {
-		output := captureOutput(func() {
-			log.Info(context.Background(), "Test info message", map[string]interface{}{
-				"key": "value",
-			})
-		}, false)
-
-		assert.Contains(t, output, `"level":"INFO"`)
-		assert.Contains(t, output, `"message":"Test info message"`)
-		assert.Contains(t, output, `"key":"value"`)
-	})
 
 	t.Run("Error", func(t *testing.T) {
 		output := captureOutput(func() {
