@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  DOCKER_IMAGE: azalio/meme-bot
+  DOCKER_IMAGE: ghcr.io/${{ github.repository }}/meme-bot
   KUBE_NAMESPACE: meme-bot
   HELM_CHART_PATH: ./charts
   KANIKO_CACHE_ARGS: "--cache=true --cache-copy-layers=true --cache-ttl=24h"
