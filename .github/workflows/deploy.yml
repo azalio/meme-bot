@@ -71,4 +71,5 @@ jobs:
                 helm upgrade --install meme-bot ${{ env.HELM_CHART_PATH }} \
                   --namespace ${{ env.KUBE_NAMESPACE }} \
                   --set image.repository=${{ env.DOCKER_IMAGE }} \
-                  --set image.tag=$(echo ${GITHUB_SHA} | head -c 7)
+                  --set image.tag=$(echo ${GITHUB_SHA} | head -c 7) \
+                  --set serviceAccount.name=meme-bot-deployer
