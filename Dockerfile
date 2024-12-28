@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y ca-certificates
 WORKDIR /app
 
 # Копируем файлы go.mod и go.sum для загрузки зависимостей
-COPY go.mod go.sum ./
+# COPY go.mod go.sum ./
 
 # Загружаем зависимости
 # RUN go mod download
