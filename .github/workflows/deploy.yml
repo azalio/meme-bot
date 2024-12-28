@@ -44,3 +44,31 @@ jobs:
               GIT_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
               GH_REGISTRY: "ghcr.io"
               IMAGE_NAME: "${{ github.repository }}/meme-bot"
+
+    deploy-to-k8s:
+        runs-on: ubuntu-latest
+        needs: build-to-ghcr
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v3
+
+            - name: Install Helm
+              run: |
+                curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+            - name: Configure Kubernetes
+              uses: azure/setup-kubectl@v3
+              with:
+                version: 'latest'
+
+            - name: Configure kubeconfig
+              run: |
+                echo "${{ secrets.KUBE_CONFIG }}" > kubeconfig.yaml
+                export KUBECONFIG=kubeconfig.yaml
+
+            - name: Deploy to Kubernetes using Helm
+              run: |
+                helm upgrade --install meme-bot ${{ env.HELM_CHART_PATH }} \
+                  --namespace ${{ env.KUBE_NAMESPACE }} \
+                  --set image.repository=${{ env.DOCKER_IMAGE }} \
+                  --set image.tag=$(echo ${GITHUB_SHA} | head -c 7)
