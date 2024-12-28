@@ -17,27 +17,43 @@ func NewTestLogger() *Logger {
 	return log
 }
 
+func captureOutput(f func(), captureStderr bool) string {
+	var r, w *os.File
+	var old *os.File
+
+	if captureStderr {
+		old = os.Stderr
+		r, w, _ = os.Pipe()
+		os.Stderr = w
+	} else {
+		old = os.Stdout
+		r, w, _ = os.Pipe()
+		os.Stdout = w
+	}
+
+	f()
+
+	w.Close()
+	if captureStderr {
+		os.Stderr = old
+	} else {
+		os.Stdout = old
+	}
+
+	buf := make([]byte, 1024)
+	n, _ := r.Read(buf)
+	return string(buf[:n])
+}
+
 func TestLogger(t *testing.T) {
 	log := NewTestLogger()
 
 	t.Run("Info", func(t *testing.T) {
-		// Redirect stdout to capture output
-		oldStdout := os.Stdout
-		r, w, _ := os.Pipe()
-		os.Stdout = w
-
-		log.Info(context.Background(), "Test info message", map[string]interface{}{
-			"key": "value",
-		})
-
-		// Restore stdout
-		w.Close()
-		os.Stdout = oldStdout
-
-		// Read captured output
-		buf := make([]byte, 1024)
-		n, _ := r.Read(buf)
-		output := string(buf[:n])
+		output := captureOutput(func() {
+			log.Info(context.Background(), "Test info message", map[string]interface{}{
+				"key": "value",
+			})
+		}, false)
 
 		assert.Contains(t, output, `"level":"INFO"`)
 		assert.Contains(t, output, `"message":"Test info message"`)
@@ -45,23 +61,11 @@ func TestLogger(t *testing.T) {
 	})
 
 	t.Run("Error", func(t *testing.T) {
-		// Redirect stdout to capture output
-		oldStdout := os.Stdout
-		r, w, _ := os.Pipe()
-		os.Stdout = w
-
-		log.Error(context.Background(), "Test error message", map[string]interface{}{
-			"error": "test error",
-		})
-
-		// Restore stdout
-		w.Close()
-		os.Stdout = oldStdout
-
-		// Read captured output
-		buf := make([]byte, 1024)
-		n, _ := r.Read(buf)
-		output := string(buf[:n])
+		output := captureOutput(func() {
+			log.Error(context.Background(), "Test error message", map[string]interface{}{
+				"error": "test error",
+			})
+		}, true)
 
 		assert.Contains(t, output, `"level":"ERROR"`)
 		assert.Contains(t, output, `"message":"Test error message"`)
@@ -69,48 +73,24 @@ func TestLogger(t *testing.T) {
 	})
 
 	t.Run("Debug", func(t *testing.T) {
-		// Redirect stdout to capture output
-		oldStdout := os.Stdout
-		r, w, _ := os.Pipe()
-		os.Stdout = w
-
-		log.Debug(context.Background(), "Test debug message", nil)
-
-		// Restore stdout
-		w.Close()
-		os.Stdout = oldStdout
-
-		// Read captured output
-		buf := make([]byte, 1024)
-		n, _ := r.Read(buf)
-		output := string(buf[:n])
+		output := captureOutput(func() {
+			log.Debug(context.Background(), "Test debug message", nil)
+		}, false)
 
 		assert.Contains(t, output, `"level":"DEBUG"`)
 		assert.Contains(t, output, `"message":"Test debug message"`)
 	})
 
 	t.Run("Fatal", func(t *testing.T) {
-		// Redirect stdout to capture output
-		oldStdout := os.Stdout
-		r, w, _ := os.Pipe()
-		os.Stdout = w
-
 		// Use a fake os.Exit to prevent actual program exit
 		oldExit := osExit
 		defer func() { osExit = oldExit }()
 		var exitCode int
 		osExit = func(code int) { exitCode = code }
 
-		log.Fatal(context.Background(), "Test fatal message", nil)
-
-		// Restore stdout
-		w.Close()
-		os.Stdout = oldStdout
-
-		// Read captured output
-		buf := make([]byte, 1024)
-		n, _ := r.Read(buf)
-		output := string(buf[:n])
+		output := captureOutput(func() {
+			log.Fatal(context.Background(), "Test fatal message", nil)
+		}, true)
 
 		assert.Contains(t, output, `"level":"FATAL"`)
 		assert.Contains(t, output, `"message":"Test fatal message"`)
@@ -132,21 +112,9 @@ func TestLogger(t *testing.T) {
 		})
 		assert.NotNil(t, loggerWithFields)
 
-		// Redirect stdout to capture output
-		oldStdout := os.Stdout
-		r, w, _ := os.Pipe()
-		os.Stdout = w
-
-		loggerWithFields.Info(context.Background(), "Test with fields", nil)
-
-		// Restore stdout
-		w.Close()
-		os.Stdout = oldStdout
-
-		// Read captured output
-		buf := make([]byte, 1024)
-		n, _ := r.Read(buf)
-		output := string(buf[:n])
+		output := captureOutput(func() {
+			loggerWithFields.Info(context.Background(), "Test with fields", nil)
+		}, false)
 
 		assert.Contains(t, output, `"field1":"value1"`)
 	})
