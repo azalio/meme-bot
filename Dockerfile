@@ -1,5 +1,5 @@
 # Используем официальный образ Go для сборки
-FROM golang:1.21 AS builder
+FROM golang:1.23 AS builder
 
 # Устанавливаем корневые сертификаты
 RUN apt-get update && apt-get install -y ca-certificates
@@ -11,7 +11,7 @@ WORKDIR /app
 COPY go.mod go.sum ./
 
 # Загружаем зависимости
-RUN go mod download
+# RUN go mod download
 
 # Копируем исходный код в контейнер
 COPY . .
