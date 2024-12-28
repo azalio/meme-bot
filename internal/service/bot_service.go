@@ -3,8 +3,11 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/azalio/meme-bot/internal/config"
+	"github.com/azalio/meme-bot/internal/otel/metrics"
+
 	"github.com/azalio/meme-bot/pkg/logger"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )

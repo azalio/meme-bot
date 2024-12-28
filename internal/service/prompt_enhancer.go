@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/azalio/meme-bot/internal/otel/metrics"
 	"github.com/azalio/meme-bot/pkg/logger"
 )
 
