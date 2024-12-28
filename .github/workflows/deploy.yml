@@ -10,25 +10,52 @@ env:
   DOCKER_IMAGE: azalio/meme-bot
   KUBE_NAMESPACE: meme-bot
   HELM_CHART_PATH: ./charts
+  KANIKO_CACHE_ARGS: "--cache=true --cache-copy-layers=true --cache-ttl=24h"
 
 jobs:
   build-and-push:
     runs-on: arc-runner-set
     container:
-      image: gcr.io/kaniko-project/executor:debug
+      image: gcr.io/kaniko-project/executor:v1.20.0-debug
+    permissions:
+        contents: read # read the repository
+        packages: write # to push to GHCR, omit for other container registry. http
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Build and push with Kaniko
+    - name: Build and Push Image to GHCR with kaniko
       run: |
-        /kaniko/executor \
-          --dockerfile=Dockerfile \
-          --context=. \
-          --destination=${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
-          --cache=true \
-          --cache-repo=${{ env.DOCKER_IMAGE }}/cache \
-          --verbosity=info
+          cat <<EOF > /kaniko/.docker/config.json
+          {
+            "auths": {
+              "ghcr.io": {
+                "auth": "$(echo -n "$GIT_USERNAME:$GIT_PASSWORD" | base64 -w0)"
+              }
+            }
+          }
+          EOF
+
+          /kaniko/executor --dockerfile="./Dockerfile" \
+            --context="${{ github.repositoryUrl }}#${{ github.ref }}#${{ github.sha }}"  \
+            --destination="$GH_REGISTRY/$IMAGE_NAME:$(echo ${GITHUB_SHA} | head  -c 7)" \
+            ${{ env.KANIKO_CACHE_ARGS }} \
+            --push-retry 5 
+      env: # needed to authenticate to github and download the repo
+          GIT_USERNAME: ${{ github.actor }} 
+          GIT_PASSWORD: ${{ secrets.GIT_TOKEN_REG }}
+          GH_REGISTRY: "ghcr.io"
+          IMAGE_NAME: "${{ github.repository }}/meme-bot"
+
+    # - name: Build and push with Kaniko
+    #   run: |
+    #     /kaniko/executor \
+    #       --dockerfile=Dockerfile \
+    #       --context=. \
+    #       --destination=${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
+    #       --cache=true \
+    #       --cache-repo=${{ env.DOCKER_IMAGE }}/cache \
+    #       --verbosity=info
 
   deploy:
     runs-on: arc-runner-set
