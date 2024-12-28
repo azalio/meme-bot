@@ -54,35 +54,39 @@ jobs:
           EOF
     
               /kaniko/executor --dockerfile="./Dockerfile" \
-                --context="${{ github.repositoryUrl }}#${{ github.ref }}#${{ github.sha }}"  \
-                --destination="$GH_REGISTRY/$IMAGE_NAME:$(echo ${GITHUB_SHA} | head  -c 7)" \
+                --context="${{ github.repositoryUrl }}#${{ github.ref }}#${{ github.sha }}" \
+                --destination="$GH_REGISTRY/$IMAGE_NAME:$(echo ${GITHUB_SHA} | head -c 7)" \
                 ${{ env.KANIKO_CACHE_ARGS }} \
-                --push-retry 5 
+                --push-retry 5
             env: # needed to authenticate to github and download the repo
               GIT_USERNAME: ${{ github.actor }} 
               GIT_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
               GH_REGISTRY: "ghcr.io"
               IMAGE_NAME: "${{ github.repository }}/meme-bot"
 
-    deploy-to-k8s:
-        runs-on: arc-runner-set
-        needs: build-to-ghcr
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v3
+  deploy-to-k8s:
+    runs-on: arc-runner-set
+    needs: build-to-ghcr
+    env:
+      DOCKER_IMAGE: ghcr.io/${{ github.repository }}/meme-bot
+      KUBE_NAMESPACE: meme-bot
+      HELM_CHART_PATH: ./charts/meme-bot
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-            - name: Install Helm
-              run: |
-                curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      - name: Install Helm
+        run: |
+          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
-            - name: Deploy to Kubernetes using Helm
-              run: |
-                helm upgrade --install meme-bot ${{ env.HELM_CHART_PATH }} \
-                  --namespace ${{ env.KUBE_NAMESPACE }} \
-                  --set image.repository=${{ env.DOCKER_IMAGE }} \
-                  --set image.tag=$(echo ${GITHUB_SHA} | head -c 7) \
-                  --set secrets.telegramBotToken=${{ secrets.TELEGRAM_BOT_TOKEN }} \
-                  --set secrets.yandexOAuthToken=${{ secrets.YANDEX_OAUTH_TOKEN }} \
-                  --set secrets.yandexArtFolderId=${{ secrets.YANDEX_ART_FOLDER_ID }} \
-                  --set secrets.fusionBrainApiKey=${{ secrets.FUSION_BRAIN_API_KEY }} \
-                  --set secrets.fusionBrainSecretKey=${{ secrets.FUSION_BRAIN_SECRET_KEY }}
+      - name: Deploy to Kubernetes using Helm
+        run: |
+          helm upgrade --install meme-bot ${{ env.HELM_CHART_PATH }} \
+            --namespace ${{ env.KUBE_NAMESPACE }} \
+            --set image.repository=${{ env.DOCKER_IMAGE }} \
+            --set image.tag=$(echo ${GITHUB_SHA} | head -c 7) \
+            --set secrets.telegramBotToken=${{ secrets.TELEGRAM_BOT_TOKEN }} \
+            --set secrets.yandexOAuthToken=${{ secrets.YANDEX_OAUTH_TOKEN }} \
+            --set secrets.yandexArtFolderId=${{ secrets.YANDEX_ART_FOLDER_ID }} \
+            --set secrets.fusionBrainApiKey=${{ secrets.FUSION_BRAIN_API_KEY }} \
+            --set secrets.fusionBrainSecretKey=${{ secrets.FUSION_BRAIN_SECRET_KEY }}
