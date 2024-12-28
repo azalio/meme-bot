@@ -221,7 +221,10 @@ func (s *FusionBrainServiceImpl) checkAvailability(ctx context.Context) (bool, e
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
 		s.logger.Error(ctx, "Failed to decode availability response", map[string]interface{}{
-			"error": err.Error(),
+			"error":    err.Error(),
+			"service":  "fusion_brain",
+			"function": "checkAvailability",
+			"modelID":  s.modelID,
 		})
 		return false, fmt.Errorf("decoding response: %w", err)
 	}
