@@ -5,13 +5,13 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"sync"
-	"flag"
 	"syscall"
 	"time"
 
@@ -338,7 +338,7 @@ func (a *App) handleMemeCommand(ctx context.Context, update tgbotapi.Update, arg
 	processingMsg, err := a.bot.SendMessage(ctx, update.Message.Chat.ID, "Генерирую мем, пожалуйста подождите...")
 	if err != nil {
 		a.log.Error(ctx, "Failed to send start message", map[string]interface{}{
-			"error":     err.Error(),
+			"error":    err.Error(),
 			"chat_id":  update.Message.Chat.ID,
 			"user":     update.Message.From.UserName,
 			"command":  "meme",
@@ -422,7 +422,8 @@ func (a *App) handleHelpCommand(ctx context.Context, update tgbotapi.Update) err
 	helpText := `Доступные команды:
 /meme [текст] - Генерирует мем с опциональным описанием
 /start - Запускает бота
-/help - Показывает это сообщение`
+/help - Показывает это сообщение
+Пост о том как создавался этот бот - https://t.me/azalio_tech/43`
 
 	if _, err := a.bot.SendMessage(ctx, update.Message.Chat.ID, helpText); err != nil {
 		metrics.ErrorCounter.Inc("help_message")
