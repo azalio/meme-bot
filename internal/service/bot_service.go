@@ -116,6 +116,11 @@ func (s *BotServiceImpl) HandleCommand(ctx context.Context, command string, args
 			// Fallback to the original prompt in case of error
 			enhancedPrompt = args
 			caption = enhancedPrompt
+			
+			// Ensure caption length is within Telegram limits
+			if len(caption) > 1024 {
+				caption = caption[:1024]
+			}
 		}
 
 		// Generate an image using the enhanced prompt
@@ -148,6 +153,10 @@ func (s *BotServiceImpl) SendPhoto(ctx context.Context, chatID int64, photo []by
 		Bytes: photo,
 	})
 
+	// Ensure caption length is within Telegram limits
+	if len(caption) > 1024 {
+		caption = caption[:1024]
+	}
 	photoMsg.Caption = caption
 
 	_, err := s.Bot.Send(photoMsg)
