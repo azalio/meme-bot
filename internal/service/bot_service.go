@@ -115,6 +115,7 @@ func (s *BotServiceImpl) HandleCommand(ctx context.Context, command string, args
 			})
 			// Fallback to the original prompt in case of error
 			enhancedPrompt = args
+			caption = enhancedPrompt
 		}
 
 		// Generate an image using the enhanced prompt
