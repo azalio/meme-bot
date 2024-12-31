@@ -42,6 +42,15 @@ func (p *PromptEnhancer) EnhancePrompt(ctx context.Context, originalPrompt strin
 		return originalPrompt, "", fmt.Errorf("enhancing prompt: %w", err)
 	}
 
+	if caption == "" {
+		caption = originalPrompt
+	}
+
+	// Ensure caption length is within Telegram limits
+	if len(caption) > 1024 {
+		caption = caption[:1024]
+	}
+
 	p.logger.Debug(ctx, "Successfully enhanced prompt", map[string]interface{}{
 		"original_prompt": originalPrompt,
 		"enhanced_prompt": enhancedPrompt,
