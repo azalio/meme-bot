@@ -115,12 +115,6 @@ func (s *BotServiceImpl) HandleCommand(ctx context.Context, command string, args
 			})
 			// Fallback to the original prompt in case of error
 			enhancedPrompt = args
-			caption = enhancedPrompt
-			
-			// Ensure caption length is within Telegram limits
-			if len(caption) > 1024 {
-				caption = caption[:1024]
-			}
 		}
 
 		// Generate an image using the enhanced prompt
