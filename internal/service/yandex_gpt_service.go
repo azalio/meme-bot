@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/azalio/meme-bot/internal/config"
 	"github.com/azalio/meme-bot/pkg/logger"
@@ -24,9 +22,6 @@ type YandexGPTServiceImpl struct {
 	config      *config.Config
 	logger      *logger.Logger
 	authService YandexAuthService
-	mu          sync.RWMutex
-	token       string
-	lastRefresh time.Time
 }
 
 // NewYandexGPTService создает новый экземпляр GPT сервиса
@@ -35,39 +30,13 @@ func NewYandexGPTService(cfg *config.Config, log *logger.Logger, auth YandexAuth
 		config:      cfg,
 		logger:      log,
 		authService: auth,
-		mu:          sync.RWMutex{},
 	}
-}
-
-func (s *YandexGPTServiceImpl) getToken(ctx context.Context) (string, error) {
-	s.mu.RLock()
-	token := s.token
-	lastRefresh := s.lastRefresh
-	s.mu.RUnlock()
-
-	// Если токен есть и он свежий (менее 11 часов), используем его
-	if token != "" && time.Since(lastRefresh) < 11*time.Hour {
-		return token, nil
-	}
-
-	// Получаем новый токен
-	newToken, err := s.authService.GetIAMToken(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	s.mu.Lock()
-	s.token = newToken
-	s.lastRefresh = time.Now()
-	s.mu.Unlock()
-
-	return newToken, nil
 }
 
 // GenerateImagePrompt генерирует промпт и подпись для создания изображения
 func (s *YandexGPTServiceImpl) GenerateImagePrompt(ctx context.Context, userPrompt string) (string, string, error) {
-	s.logger.Debug(ctx, "Requesting IAM token", nil)
-	iamToken, err := s.getToken(ctx)
+	s.logger.Debug(ctx, "Requesting IAM token from auth service", nil)
+	iamToken, err := s.authService.GetIAMToken(ctx)
 	if err != nil {
 		return "", "", fmt.Errorf("getting IAM token: %w", err)
 	}
@@ -197,16 +166,6 @@ func (s *YandexGPTServiceImpl) sendGPTRequest(ctx context.Context, iamToken stri
 	s.logger.Debug(ctx, "Received GPT response", map[string]interface{}{
 		"status_code": resp.StatusCode,
 	})
-	if resp.StatusCode == http.StatusUnauthorized {
-		// Сбрасываем токен и пробуем еще раз
-		s.mu.Lock()
-		s.token = ""
-		s.mu.Unlock()
-		
-		s.logger.Info(ctx, "Token expired, retrying with new token", nil)
-		return s.sendGPTRequest(ctx, iamToken, request)
-	}
-
 	if resp.StatusCode != http.StatusOK {
 		// Пытаемся прочитать тело ошибки
 		var errResponse GPTErrorResponse
