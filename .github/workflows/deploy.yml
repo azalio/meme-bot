@@ -76,6 +76,7 @@ jobs:
               curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
           - name: Deploy to Kubernetes using Helm
+            id: deploy
             run: |
               helm upgrade --install meme-bot ${{ env.HELM_CHART_PATH }} \
                 --namespace ${{ env.KUBE_NAMESPACE }} \
@@ -86,3 +87,18 @@ jobs:
                 --set secrets.yandexArtFolderId=${{ secrets.YANDEX_ART_FOLDER_ID }} \
                 --set secrets.fusionBrainApiKey=${{ secrets.FUSION_BRAIN_API_KEY }} \
                 --set secrets.fusionBrainSecretKey=${{ secrets.FUSION_BRAIN_SECRET_KEY }}
+
+          - name: Send Telegram notification
+            if: always()
+            run: |
+              STATUS=${{ job.status }}
+              if [ "${{ steps.deploy.outcome }}" == "success" ]; then
+                STATUS="✅ Успешно"
+              else
+                STATUS="❌ Ошибка"
+              fi
+              
+              curl -s -X POST \
+                -H "Content-Type: application/json" \
+                -d "{\"chat_id\": \"${{ secrets.TELEGRAM_CHAT_ID }}\", \"text\": \"Deploy status: $STATUS\nRepo: ${{ github.repository }}\nCommit: $(echo ${GITHUB_SHA} | head -c 7)\"}" \
+                https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage
