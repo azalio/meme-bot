@@ -62,10 +62,11 @@ func (s *YandexGPTServiceImpl) GenerateImagePrompt(ctx context.Context, userProm
 
 				Ответ должен быть в формате JSON:
 				{
-					"context": "Контекст/ситуация",
-					"detail": "Остроумная деталь",
-					"caption": "Итоговая подпись для картинки"
-				}`,
+					"context": "Контекст/ситуация на английском языке",
+					"detail": "Остроумная деталь на английском языке",
+					"caption": "Итоговая подпись для картинки на русском языке"
+				}
+				`,
 			},
 			{
 				Role: "user",
@@ -110,7 +111,7 @@ func (s *YandexGPTServiceImpl) GenerateImagePrompt(ctx context.Context, userProm
 	}
 
 	// Формируем итоговый промпт из context и detail
-	enhancedPrompt := promptResponse.Context + "\n\n" + promptResponse.Detail
+	enhancedPrompt := promptResponse.Context + "." + promptResponse.Detail
 
 	s.logger.Debug(ctx, "Successfully parsed GPT response", map[string]interface{}{
 		"context": promptResponse.Context,
