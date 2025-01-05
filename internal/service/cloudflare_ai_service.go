@@ -3,9 +3,9 @@ package service
 import (
     "bytes"
     "context"
-    "encoding/base64"
     "encoding/json"
     "fmt"
+    "io"
     "net/http"
     "time"
 
@@ -74,24 +74,23 @@ func (s *CloudflareAIServiceImpl) GenerateImage(ctx context.Context, prompt stri
         return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
     }
 
-    var result struct {
-        Image string `json:"image"`
-    }
-    if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-        s.logger.Error(ctx, "Failed to decode response", map[string]interface{}{
+    // Read the binary image data directly
+    imageData, err := io.ReadAll(resp.Body)
+    if err != nil {
+        s.logger.Error(ctx, "Failed to read image data", map[string]interface{}{
             "error": err.Error(),
         })
-        metrics.CloudflareAIFailureCounter.Inc("decode_error")
-        return nil, fmt.Errorf("decoding response: %w", err)
+        metrics.CloudflareAIFailureCounter.Inc("read_error")
+        return nil, fmt.Errorf("reading image data: %w", err)
     }
 
-    imageData, err := base64.StdEncoding.DecodeString(result.Image)
-    if err != nil {
-        s.logger.Error(ctx, "Failed to decode image", map[string]interface{}{
-            "error": err.Error(),
+    // Verify it's a valid JPEG image
+    if !bytes.HasPrefix(imageData, []byte{0xFF, 0xD8}) {
+        s.logger.Error(ctx, "Invalid JPEG image received", map[string]interface{}{
+            "data_length": len(imageData),
         })
-        metrics.CloudflareAIFailureCounter.Inc("image_decode_error")
-        return nil, fmt.Errorf("decoding image: %w", err)
+        metrics.CloudflareAIFailureCounter.Inc("invalid_image")
+        return nil, fmt.Errorf("invalid JPEG image received")
     }
 
     metrics.CloudflareAISuccessCounter.Inc("success")
