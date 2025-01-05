@@ -28,6 +28,13 @@ jobs:
         with:
           go-version: '1.23' # Укажите версию Go, используемую в проекте
 
+      - name: Send Telegram notification about pipeline start
+        run: |
+          curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\": \"${{ secrets.TELEGRAM_CHAT_ID }}\", \"text\": \"🚀 Начался процесс деплоя\nRepo: ${{ github.repository }}\nBranch: ${{ github.ref }}\"}" \
+            https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage
+
       - name: Run tests
         run: go test -v ./...
 
