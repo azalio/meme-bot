@@ -21,10 +21,11 @@ import (
 // - mu: RWMutex для потокобезопасного доступа к токену
 // - token: кэшированный IAM токен
 type YandexAuthServiceImpl struct {
-	config *config.Config
-	logger *logger.Logger
-	mu     sync.RWMutex // Защищает доступ к полю token
-	token  string       // Кэшированный IAM токен
+	config      *config.Config
+	logger      *logger.Logger
+	mu          sync.RWMutex // Защищает доступ к полю token
+	token       string       // Кэшированный IAM токен
+	tokenExpiry time.Time    // Срок действия токена
 }
 
 type OAuth2Token struct {
@@ -75,7 +76,7 @@ func (s *YandexAuthServiceImpl) GetIAMToken(ctx context.Context) (string, error)
 	token := s.token
 	s.mu.RUnlock()
 
-	if token != "" {
+	if token != "" && time.Now().Before(s.tokenExpiry) {
 		s.logger.Debug(ctx, "Using cached IAM token", map[string]interface{}{
 			"token_length": len(token),
 		})
@@ -190,28 +191,52 @@ func (s *YandexAuthServiceImpl) refreshToken(ctx context.Context) (string, error
 
 	// Повторная проверка после получения блокировки
 	// Токен мог быть обновлен другой горутиной пока мы ждали Lock
-	if s.token != "" {
-		s.logger.Debug(ctx, "Token was updated by another routine", map[string]interface{}{
+	if s.token != "" && time.Now().Before(s.tokenExpiry) {
+		s.logger.Debug(ctx, "Using cached IAM token", map[string]interface{}{
 			"token_length": len(s.token),
+			"expires_in":   time.Until(s.tokenExpiry).String(),
 		})
 		return s.token, nil
 	}
 
 	s.logger.Debug(ctx, "Requesting new IAM token", nil)
-	newToken, err := s.RefreshIAMToken(ctx, s.config.YandexOAuthToken)
-	if err != nil {
-		s.logger.Error(ctx, "Failed to refresh IAM token", map[string]interface{}{
-			"error": err.Error(),
+
+	// Добавляем повторные попытки с экспоненциальной задержкой
+	retries := 3
+	var lastErr error
+
+	for i := 0; i < retries; i++ {
+		newToken, err := s.RefreshIAMToken(ctx, s.config.YandexOAuthToken)
+		if err == nil {
+			s.token = newToken
+			s.tokenExpiry = time.Now().Add(11 * time.Hour)
+			s.logger.Info(ctx, "Successfully refreshed and cached IAM token", map[string]interface{}{
+				"token_length": len(newToken),
+				"expires_in":   time.Until(s.tokenExpiry).String(),
+			})
+			return newToken, nil
+		}
+
+		lastErr = err
+		s.logger.Error(ctx, "Failed to refresh IAM token, retrying", map[string]interface{}{
+			"error":    err.Error(),
+			"attempt":  i + 1,
+			"retries":  retries,
+			"delay_ms": (i + 1) * 1000,
 		})
-		return "", err
+
+		// Экспоненциальная задержка
+		time.Sleep(time.Duration(i+1) * time.Second)
 	}
 
-	s.token = newToken
-	s.logger.Info(ctx, "Successfully refreshed and cached IAM token", map[string]interface{}{
-		"token_length": len(newToken),
+	// Если все попытки неудачны, сбрасываем токен
+	s.token = ""
+	s.tokenExpiry = time.Time{}
+	s.logger.Error(ctx, "Failed to refresh IAM token after retries", map[string]interface{}{
+		"error": lastErr.Error(),
 	})
 
-	return newToken, nil
+	return "", fmt.Errorf("failed to refresh IAM token after %d attempts: %w", retries, lastErr)
 }
 
 // refreshTokenPeriodically запускает периодическое обновление токена

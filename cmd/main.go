@@ -443,7 +443,7 @@ func (a *App) handleStartCommand(ctx context.Context, update tgbotapi.Update) er
 	metrics.CommandCounter.Inc("start")
 
 	welcomeMsg := fmt.Sprintf(
-		"Привет, %s! Я бот для генерации мемов. Используй /meme [текст] для создания мема. "+
+		"Привет, %s! Я бот для генерации мемов.\nИспользуй /meme [текст] для создания мема.\n"+
 			"Например: /meme красная шапочка",
 		update.Message.From.UserName,
 	)
