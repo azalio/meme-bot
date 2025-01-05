@@ -55,6 +55,10 @@ var (
 	CommandDuration      *Histogram
 	PromptGenerationTime *Histogram
 	APIResponseTime      *Histogram
+	
+	// Cloudflare AI metrics
+	CloudflareAISuccessCounter *Counter
+	CloudflareAIFailureCounter *Counter
 	ActiveGoroutines     *Gauge
 	MemoryUsage          *Gauge
 	OpenHTTPConnections  *Gauge
@@ -298,7 +302,22 @@ func InitMetrics() (*MetricProvider, error) {
 			log.Printf("Failed to create open HTTP connections gauge: %v", err)
 		}
 
-		// Добавьте инициализацию остальных метрик по аналогии...
+		// Инициализация счетчиков для Cloudflare AI
+		CloudflareAISuccessCounter, err = mp.NewCounter(
+			"meme_bot_cloudflare_ai_success_total",
+			"Total number of successful image generations via Cloudflare AI",
+		)
+		if err != nil {
+			log.Printf("Failed to create Cloudflare AI success counter: %v", err)
+		}
+
+		CloudflareAIFailureCounter, err = mp.NewCounter(
+			"meme_bot_cloudflare_ai_failure_total", 
+			"Total number of failed image generations via Cloudflare AI",
+		)
+		if err != nil {
+			log.Printf("Failed to create Cloudflare AI failure counter: %v", err)
+		}
 	})
 
 	return mp, nil
