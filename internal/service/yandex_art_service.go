@@ -60,32 +60,19 @@ func (s *YandexArtServiceImpl) GenerateImage(ctx context.Context, promptText str
 		return nil, fmt.Errorf("getting IAM token: %w", err)
 	}
 
-	// Генерируем улучшенный промпт
-	s.logger.Debug(ctx, "Enhancing prompt", map[string]interface{}{
-		"original_prompt": promptText,
-	})
-	enhancedPrompt, _, err := s.promptEnhancer.EnhancePrompt(ctx, promptText)
-	if err != nil {
-		s.logger.Error(ctx, "Prompt enhancement failed, using original", map[string]interface{}{
-			"error":           err.Error(),
-			"original_prompt": promptText,
-		})
-		enhancedPrompt = promptText
-	}
-
 	// Создаем запрос на генерацию
-	operationID, err := s.startImageGeneration(ctx, enhancedPrompt, iamToken)
+	operationID, err := s.startImageGeneration(ctx, promptText, iamToken)
 	if err != nil {
 		s.logger.Error(ctx, "Failed to start image generation", map[string]interface{}{
 			"error":           err.Error(),
-			"enhanced_prompt": enhancedPrompt,
+			"prompt": promptText,
 		})
 		return nil, fmt.Errorf("starting image generation: %w", err)
 	}
 
 	s.logger.Debug(ctx, "Image generation started", map[string]interface{}{
 		"operation_id": operationID,
-		"prompt":       enhancedPrompt,
+		"prompt":       promptText,
 	})
 
 	// Ожидаем завершения и получаем результат
