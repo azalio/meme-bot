@@ -11,9 +11,10 @@ import (
 
 // ImageGenerationService provides a unified interface for image generation
 type ImageGenerationService struct {
-	fusionBrain *FusionBrainServiceImpl
-	yandexArt   *YandexArtServiceImpl
-	logger      *logger.Logger
+	fusionBrain  *FusionBrainServiceImpl
+	yandexArt    *YandexArtServiceImpl
+	cloudflareAI *CloudflareAIServiceImpl
+	logger       *logger.Logger
 }
 
 // NewImageGenerationService creates a new instance of ImageGenerationService
@@ -24,9 +25,10 @@ func NewImageGenerationService(
 	gpt YandexGPTService,
 ) *ImageGenerationService {
 	return &ImageGenerationService{
-		fusionBrain: NewFusionBrainService(log),
-		yandexArt:   NewYandexArtService(cfg, log, auth, gpt),
-		logger:      log,
+		fusionBrain:  NewFusionBrainService(log),
+		yandexArt:    NewYandexArtService(cfg, log, auth, gpt),
+		cloudflareAI: NewCloudflareAIService(log),
+		logger:       log,
 	}
 }
 
@@ -80,10 +82,34 @@ func (s *ImageGenerationService) GenerateImage(ctx context.Context, promptText s
 		errorChan <- fmt.Errorf("YandexArt generation failed")
 	}()
 
+	// Добавляем третью горутину для Cloudflare AI
+	go func() {
+		if s.cloudflareAI != nil {
+			s.logger.Info(ctx, "Attempting Cloudflare AI image generation", map[string]interface{}{
+				"prompt_length": len(promptText),
+			})
+
+			imageData, err := s.cloudflareAI.GenerateImage(ctx, promptText)
+			if err == nil {
+				s.logger.Info(ctx, "Successfully generated image with Cloudflare AI", map[string]interface{}{
+					"image_size": len(imageData),
+				})
+				metrics.CloudflareAISuccessCounter.Inc("success")
+				resultChan <- imageData
+				return
+			}
+			s.logger.Error(ctx, "Cloudflare AI generation failed", map[string]interface{}{
+				"error": err.Error(),
+			})
+			metrics.CloudflareAIFailureCounter.Inc("failure")
+		}
+		errorChan <- fmt.Errorf("Cloudflare AI generation failed")
+	}()
+
 	// Ожидаем первый успешный результат или все ошибки
 	var errors []error
 
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 3; i++ {
 		select {
 		case imageData := <-resultChan:
 			return imageData, nil
