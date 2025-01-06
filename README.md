@@ -244,6 +244,8 @@ go build -o meme-bot cmd/main.go
 │   └── otel/             # Инструменты для мониторинга
 ├── pkg/
 │   └── logger/           # Логирование
+├── cloudflare/           # Cloudflare Workers
+│   └── index.js          # Скрипт для генерации изображений через AI
 ├── charts/               # Kubernetes Helm-чарты
 ├── .env                  # Конфигурационные переменные
 ├── Dockerfile            # Конфигурация Docker
